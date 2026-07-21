@@ -1,0 +1,2 @@
+FEISHU_WEBHOOK=https://open.feishu.cn/open-apis/bot/v2/hook/REPLACE_ME
+MANUAL_RUN_SECRET=replace-with-a-long-random-secret

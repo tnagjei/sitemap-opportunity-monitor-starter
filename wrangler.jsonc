@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "sitemap-opportunity-monitor",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-07-21",
+  "workers_dev": true,
+  "triggers": {
+    "crons": ["0 1 * * *"]
+  },
+  "kv_namespaces": [
+    {
+      "binding": "SNAPSHOTS",
+      "id": "00000000000000000000000000000000"
+    }
+  ],
+  "vars": {
+    "MAX_NEW_PAGES": "20",
+    "MAX_SITEMAPS_PER_SITE": "50",
+    "MONITORED_SITEMAPS": "[{\"id\":\"picmonkey\",\"name\":\"PicMonkey\",\"url\":\"https://www.picmonkey.com/sitemap.xml\"}]"
+  }
+}
