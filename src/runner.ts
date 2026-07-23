@@ -1,5 +1,5 @@
 import { parsePositiveInt, parseSites } from "./config";
-import { notifyError, notifySiteResult } from "./feishu";
+import { notifyError, notifyNoNewPages, notifySiteResult } from "./feishu";
 import { analyzePage } from "./page";
 import { collectPageUrls, findNewUrls } from "./sitemap";
 import type { Env, SiteRunResult, Snapshot } from "./types";
@@ -38,6 +38,7 @@ export async function runMonitor(env: Env): Promise<Record<string, unknown>> {
 
       const newUrls = findNewUrls(currentUrls, previous.urls);
       if (newUrls.length === 0) {
+        await notifyNoNewPages(env.FEISHU_WEBHOOK, site.name, site.url, currentUrls.length);
         const snapshot: Snapshot = {
           sitemapUrl: site.url,
           scannedAt: new Date().toISOString(),

@@ -81,6 +81,21 @@ export async function notifySiteResult(webhook: string, result: SiteRunResult): 
   }
 }
 
+export async function notifyNoNewPages(
+  webhook: string,
+  siteName: string,
+  siteUrl: string,
+  totalUrls: number,
+): Promise<void> {
+  const message = [
+    `【${siteName} Sitemap 监控】`,
+    `Sitemap：${siteUrl}`,
+    `当前页面总数：${totalUrls}`,
+    `今日无新增页面。`,
+  ].join("\n");
+  await sendText(webhook, message);
+}
+
 export async function notifyError(webhook: string, siteName: string, error: unknown): Promise<void> {
   const message = error instanceof Error ? error.message : String(error);
   await sendText(webhook, `【Sitemap 监控失败】\n站点：${siteName}\n错误：${message.slice(0, 2000)}`);
