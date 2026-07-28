@@ -16,6 +16,6 @@
   "vars": {
     "MAX_NEW_PAGES": "20",
     "MAX_SITEMAPS_PER_SITE": "50",
-    "MONITORED_SITEMAPS": "[{\"id\":\"picmonkey\",\"name\":\"PicMonkey\",\"url\":\"https://www.picmonkey.com/sitemap.xml\"},{\"id\":\"namethatui\",\"name\":\"NameThatUI\",\"url\":\"https://namethatui.com/sitemap.xml\"},{\"id\":\"inchcalculator\",\"name\":\"InchCalculator\",\"url\":\"https://www.inchcalculator.com/sitemap_index.xml\"},{\"id\":\"omnicalculator\",\"name\":\"OmniCalculator\",\"url\":\"https://www.omnicalculator.com/sitemap.xml\"},{\"id\":\"magnific\",\"name\":\"Magnific\",\"url\":\"https://www.magnific.com/sitemap.xml\"},{\"id\":\"imagy\",\"name\":\"Imagy\",\"url\":\"https://imagy.app/sitemap.xml\"},{\"id\":\"vsco\",\"name\":\"VSCO\",\"url\":\"https://www.vsco.co/sitemap.xml\"}]"
+    "MONITORED_SITEMAPS": "[{\"id\":\"picmonkey\",\"name\":\"PicMonkey\",\"url\":\"https://www.picmonkey.com/sitemap.xml\"},{\"id\":\"namethatui\",\"name\":\"NameThatUI\",\"url\":\"https://namethatui.com/sitemap.xml\"},{\"id\":\"inchcalculator\",\"name\":\"InchCalculator\",\"url\":\"https://www.inchcalculator.com/sitemap_index.xml\"},{\"id\":\"omnicalculator\",\"name\":\"OmniCalculator\",\"url\":\"https://www.omnicalculator.com/sitemap.xml\"},{\"id\":\"magnific\",\"name\":\"Magnific\",\"url\":\"https://www.magnific.com/ai-sitemap.xml\"},{\"id\":\"imagy\",\"name\":\"Imagy\",\"url\":\"https://imagy.app/sitemap.xml\"},{\"id\":\"vsco\",\"name\":\"VSCO\",\"url\":\"https://www.vsco.co/sitemap.xml\"}]"
   }
 }
