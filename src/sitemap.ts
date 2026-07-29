@@ -1,5 +1,5 @@
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; SitemapOpportunityMonitor/0.1; +https://workers.dev)";
+  "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
 
 export type SitemapKind = "index" | "urlset" | "unknown";
 
