@@ -70,8 +70,18 @@ export async function collectPageUrls(
     }
 
     visited.add(sitemapUrl);
-    const xml = await fetchSitemap(sitemapUrl);
-    const parsed = parseSitemapXml(xml);
+    const isRoot = sitemapUrl === rootUrl;
+
+    let xml: string;
+    let parsed: ParsedSitemap;
+    try {
+      xml = await fetchSitemap(sitemapUrl);
+      parsed = parseSitemapXml(xml);
+    } catch (error) {
+      if (isRoot) throw error;
+      console.error("跳过无法获取或解析的子 Sitemap", sitemapUrl, error instanceof Error ? error.message : String(error));
+      continue;
+    }
 
     if (parsed.kind === "index") {
       for (const child of parsed.locations) {
@@ -85,7 +95,10 @@ export async function collectPageUrls(
       continue;
     }
 
-    throw new Error(`无法识别 Sitemap XML 类型: ${sitemapUrl}`);
+    if (isRoot) {
+      throw new Error(`无法识别 Sitemap XML 类型: ${sitemapUrl}`);
+    }
+    console.error("跳过无法识别的子 Sitemap", sitemapUrl);
   }
 
   return Array.from(pageUrls).sort();
