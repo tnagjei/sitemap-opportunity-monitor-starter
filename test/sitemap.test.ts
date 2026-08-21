@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collectPageUrls, findNewUrls, parseSitemapXml } from "../src/sitemap";
+import { collectPageUrls, findNewUrls, filterUrlsByPrefix, parseSitemapXml } from "../src/sitemap";
 
 const INDEX_XML = `<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://a.com/one.xml</loc></sitemap><sitemap><loc>https://a.com/bad.xml</loc></sitemap></sitemapindex>`;
 const URLSET_XML = `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://a.com/page</loc></url></urlset>`;
@@ -36,6 +36,20 @@ test("解析 sitemap index", () => {
 
 test("只返回新增网址", () => {
   assert.deepEqual(findNewUrls(["a", "b", "c"], ["a", "c"]), ["b"]);
+});
+
+test("只保留 PMKG 站点详情页", () => {
+  assert.deepEqual(
+    filterUrlsByPrefix(
+      [
+        "https://www.pmkg.net/sites/7817.html",
+        "https://www.pmkg.net/sitetag/ai/",
+        "https://www.pmkg.net/sites/not-a-number.html",
+      ],
+      "https://www.pmkg.net/sites/",
+    ),
+    ["https://www.pmkg.net/sites/7817.html"],
+  );
 });
 
 test("子 Sitemap 返回验证页时跳过并继续收集", async () => {

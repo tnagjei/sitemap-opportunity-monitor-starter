@@ -11,6 +11,8 @@ export interface MonitoredSite {
   id: string;
   name: string;
   url: string;
+  pathPrefix?: string;
+  analyzeLinkedSite?: boolean;
 }
 
 export interface Snapshot {
@@ -26,6 +28,16 @@ export interface PageAnalysis {
   h1: string;
   description: string;
   keywords: string[];
+  external?: ExternalPageAnalysis;
+  error?: string;
+}
+
+export interface ExternalPageAnalysis {
+  url: string;
+  status: number | null;
+  title: string;
+  h1: string;
+  description: string;
   error?: string;
 }
 

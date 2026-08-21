@@ -26,6 +26,8 @@ export function parseSites(env: Env): MonitoredSite[] {
     const id = String(candidate.id ?? "").trim();
     const name = String(candidate.name ?? "").trim();
     const url = String(candidate.url ?? "").trim();
+    const pathPrefix = String(candidate.pathPrefix ?? "").trim() || undefined;
+    const analyzeLinkedSite = candidate.analyzeLinkedSite === true;
 
     if (!/^[a-z0-9][a-z0-9_-]{1,63}$/i.test(id)) {
       throw new Error(`监控对象 id 不合法: ${id || "空"}`);
@@ -40,6 +42,12 @@ export function parseSites(env: Env): MonitoredSite[] {
     if (!/^https?:$/.test(parsedUrl.protocol)) {
       throw new Error(`监控对象 ${id} 的 URL 必须是 HTTP 或 HTTPS`);
     }
-    return { id, name, url: parsedUrl.toString() };
+    if (pathPrefix) {
+      const parsedPrefix = new URL(pathPrefix);
+      if (!/^https?:$/.test(parsedPrefix.protocol)) {
+        throw new Error(`监控对象 ${id} 的 pathPrefix 必须是 HTTP 或 HTTPS`);
+      }
+    }
+    return { id, name, url: parsedUrl.toString(), pathPrefix, analyzeLinkedSite };
   });
 }

@@ -12,6 +12,14 @@ function formatAnalysis(item: PageAnalysis, index: number): string {
   if (item.h1) lines.push(`H1：${item.h1}`);
   if (item.description) lines.push(`Description：${item.description.slice(0, 240)}`);
   if (item.error) lines.push(`异常：${item.error}`);
+  if (item.external) {
+    lines.push(`提交网站：${item.external.url}`);
+    lines.push(`提交网站状态码：${item.external.status ?? "未知"}`);
+    if (item.external.title) lines.push(`提交网站 Title：${item.external.title}`);
+    if (item.external.h1) lines.push(`提交网站 H1：${item.external.h1}`);
+    if (item.external.description) lines.push(`提交网站 Description：${item.external.description.slice(0, 240)}`);
+    if (item.external.error) lines.push(`提交网站异常：${item.external.error}`);
+  }
 
   if (item.keywords.length > 0) {
     lines.push("候选关键词：");

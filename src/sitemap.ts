@@ -108,3 +108,10 @@ export function findNewUrls(current: string[], previous: string[]): string[] {
   const oldSet = new Set(previous);
   return current.filter((url) => !oldSet.has(url));
 }
+
+export function filterUrlsByPrefix(urls: string[], prefix: string): string[] {
+  return urls.filter((url) => {
+    if (!url.startsWith(prefix)) return false;
+    return /^https?:\/\/[^/]+\/sites\/\d+\.html(?:$|[?#])/.test(url);
+  });
+}

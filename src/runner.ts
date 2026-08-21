@@ -1,16 +1,16 @@
 import { parsePositiveInt, parseSites } from "./config";
 import { notifyError, notifyNoNewPages, notifySiteResult } from "./feishu";
 import { analyzePage } from "./page";
-import { collectPageUrls, findNewUrls } from "./sitemap";
+import { collectPageUrls, filterUrlsByPrefix, findNewUrls } from "./sitemap";
 import type { Env, SiteRunResult, Snapshot } from "./types";
 
 function snapshotKey(siteId: string): string {
   return `snapshot:${siteId}`;
 }
 
-async function analyzeSequentially(urls: string[]) {
+async function analyzeSequentially(urls: string[], analyzeLinkedSite = false) {
   const results = [];
-  for (const url of urls) results.push(await analyzePage(url));
+  for (const url of urls) results.push(await analyzePage(url, analyzeLinkedSite));
   return results;
 }
 
@@ -22,7 +22,8 @@ export async function runMonitor(env: Env): Promise<Record<string, unknown>> {
 
   for (const site of sites) {
     try {
-      const currentUrls = await collectPageUrls(site.url, maxSitemaps);
+      const collectedUrls = await collectPageUrls(site.url, maxSitemaps);
+      const currentUrls = site.pathPrefix ? filterUrlsByPrefix(collectedUrls, site.pathPrefix) : collectedUrls;
       const previous = await env.SNAPSHOTS.get<Snapshot>(snapshotKey(site.id), "json");
 
       if (!previous) {
@@ -50,7 +51,7 @@ export async function runMonitor(env: Env): Promise<Record<string, unknown>> {
       }
 
       const selected = newUrls.slice(0, maxNewPages);
-      const analyses = await analyzeSequentially(selected);
+      const analyses = await analyzeSequentially(selected, site.analyzeLinkedSite);
       const result: SiteRunResult = {
         site,
         baselineCreated: false,
