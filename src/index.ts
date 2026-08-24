@@ -24,6 +24,11 @@ export default {
       return json(await runMonitor(env));
     }
 
+    if (request.method === "POST" && url.pathname === "/aitdk/run") {
+      if (!authorized(request, env)) return json({ ok: false, error: "Unauthorized" }, 401);
+      return json(await runAitdkMonitor(env));
+    }
+
     if (request.method === "POST" && url.pathname === "/aitdk/approve") {
       if (!authorized(request, env)) return json({ ok: false, error: "Unauthorized" }, 401);
       const body = await request.json().catch(() => null) as { batchId?: string } | null;
