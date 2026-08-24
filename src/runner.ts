@@ -105,9 +105,10 @@ export async function runMonitor(env: Env): Promise<Record<string, unknown>> {
 
 export async function runAitdkMonitor(env: Env): Promise<Record<string, unknown>> {
   try {
-    if (!env.SITEDATA_API_KEY) throw new Error("缺少 SITEDATA_API_KEY");
+    const apiKey = env.TABAPI_API_KEY ?? env.SITEDATA_API_KEY;
+    if (!apiKey) throw new Error("缺少 TABAPI_API_KEY");
     const limit = parsePositiveInt(env.MAX_AITDK_DOMAINS_PER_RUN, 20);
-    const summary = await processAitdkQueue(env.SNAPSHOTS, env.SITEDATA_API_KEY, limit);
+    const summary = await processAitdkQueue(env.SNAPSHOTS, apiKey, limit);
     await notifyAitdkResults(env.FEISHU_WEBHOOK, summary);
     return { ranAt: new Date().toISOString(), ...summary };
   } catch (error) {

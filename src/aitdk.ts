@@ -17,20 +17,50 @@ export interface AitdkBatch {
 }
 
 export interface TrafficData {
-  SiteName?: string;
-  Engagments?: { Visits?: string };
-  TrafficSources?: { Search?: number; Direct?: number };
-  DateData?: { registration?: string };
-  TopKeywords?: Array<{ Name?: string; Volume?: number }>;
+  domain?: string;
+  title?: string | null;
+  description?: string | null;
+  overview?: {
+    global_rank?: number | null;
+    country_rank?: { country: string; rank: number } | null;
+    visits?: number | null;
+    bounce_rate?: number | null;
+    pages_per_visit?: number | null;
+    time_on_site_seconds?: number | null;
+    month?: string | null;
+  };
+  monthly_visits?: Array<{ month: string; visits: number }>;
+  traffic_sources?: Record<string, number | null>;
+  top_keywords?: Array<{ name: string; volume: number; cpc: number; estimated_value: number }>;
+  top_regions?: Array<{ country: string; name: string; share: number }>;
+  ai_traffic?: {
+    trends: Array<{ name: string; history: Array<{ date: string; value: number }> }>;
+  } | null;
+  registrationDate?: string;
+  registrationError?: string;
 }
 
 export interface TrafficAssessment {
   qualified: boolean;
+  title: string;
+  description: string;
   visits: number;
+  globalRank: number | null;
+  countryRank: { country: string; rank: number } | null;
+  bounceRate: number | null;
+  pagesPerVisit: number | null;
+  timeOnSiteSeconds: number | null;
+  reportingMonth: string;
   searchShare: number;
   directShare: number;
+  trafficSources: Record<string, number | null>;
+  monthlyVisits: Array<{ month: string; visits: number }>;
+  topKeywords: Array<{ name: string; volume: number; cpc: number; estimatedValue: number }>;
   registrationDate: string;
-  nonBrandKeywords: Array<{ name: string; volume: number }>;
+  registrationError?: string;
+  nonBrandKeywords: Array<{ name: string; volume: number; cpc: number; estimatedValue: number }>;
+  topRegions: Array<{ country: string; name: string; share: number }>;
+  aiTraffic: TrafficData["ai_traffic"];
 }
 
 export interface AitdkProcessedResult {
@@ -39,7 +69,6 @@ export interface AitdkProcessedResult {
   cached: boolean;
   assessment?: TrafficAssessment;
   costCredits?: number;
-  remainingCredits?: number;
   error?: string;
 }
 
@@ -54,7 +83,7 @@ export interface AitdkQueueSummary {
 }
 
 const BATCH_PREFIX = "aitdk:batch:";
-const CACHE_PREFIX = "aitdk:domain:";
+const CACHE_PREFIX = "aitdk:tabapi:domain:";
 const CACHE_TTL_SECONDS = 30 * 24 * 60 * 60;
 
 export function createAitdkBatch(siteId: string, urls: string[], now = new Date()): AitdkBatch {
@@ -66,7 +95,7 @@ export function createAitdkBatch(siteId: string, urls: string[], now = new Date(
     createdAt: now.toISOString(),
     status: uniqueUrls.length <= 20 ? "approved" : "pending_approval",
     urls: uniqueUrls,
-    estimatedCredits: uniqueUrls.length * 2,
+    estimatedCredits: uniqueUrls.length * 4,
     processedCount: 0,
     queriedCount: 0,
     skippedCount: 0,
@@ -85,15 +114,20 @@ function normalizedTokens(value: string): string[] {
 }
 
 export function assessTraffic(domain: string, data: TrafficData, now = new Date()): TrafficAssessment {
-  const visits = Number(data.Engagments?.Visits ?? 0);
-  const searchShare = Number(data.TrafficSources?.Search ?? 0);
-  const directShare = Number(data.TrafficSources?.Direct ?? 0);
-  const registrationDate = data.DateData?.registration ?? "";
+  const visits = Number(data.overview?.visits ?? 0);
+  const searchShare = Number(data.traffic_sources?.search ?? 0);
+  const directShare = Number(data.traffic_sources?.direct ?? 0);
+  const registrationDate = data.registrationDate ?? "";
   const registeredAt = Date.parse(registrationDate);
   const ageDays = Number.isFinite(registeredAt) ? (now.getTime() - registeredAt) / 86_400_000 : Number.POSITIVE_INFINITY;
-  const brandTokens = new Set([...normalizedTokens(domain), ...normalizedTokens(data.SiteName ?? "")]);
-  const nonBrandKeywords = (data.TopKeywords ?? [])
-    .map((item) => ({ name: item.Name?.trim() ?? "", volume: Number(item.Volume ?? 0) }))
+  const brandTokens = new Set([...normalizedTokens(domain), ...normalizedTokens(data.title ?? "")]);
+  const topKeywords = (data.top_keywords ?? []).map((item) => ({
+    name: item.name.trim(),
+    volume: Number(item.volume ?? 0),
+    cpc: Number(item.cpc ?? 0),
+    estimatedValue: Number(item.estimated_value ?? 0),
+  }));
+  const nonBrandKeywords = topKeywords
     .filter((item) => {
       if (!item.name) return false;
       const keyword = item.name.toLowerCase().replace(/[^a-z0-9]+/g, "");
@@ -102,11 +136,25 @@ export function assessTraffic(domain: string, data: TrafficData, now = new Date(
 
   return {
     qualified: ageDays >= 0 && ageDays <= 365 && visits >= 3_000 && searchShare >= 0.2 && directShare >= 0.2,
+    title: data.title ?? "",
+    description: data.description ?? "",
     visits,
+    globalRank: data.overview?.global_rank ?? null,
+    countryRank: data.overview?.country_rank ?? null,
+    bounceRate: data.overview?.bounce_rate ?? null,
+    pagesPerVisit: data.overview?.pages_per_visit ?? null,
+    timeOnSiteSeconds: data.overview?.time_on_site_seconds ?? null,
+    reportingMonth: data.overview?.month ?? "",
     searchShare,
     directShare,
+    trafficSources: data.traffic_sources ?? {},
+    monthlyVisits: data.monthly_visits ?? [],
+    topKeywords,
     registrationDate,
+    registrationError: data.registrationError,
     nonBrandKeywords,
+    topRegions: data.top_regions ?? [],
+    aiTraffic: data.ai_traffic ?? null,
   };
 }
 
@@ -132,7 +180,7 @@ export async function enqueueAitdkBatch(
     ...existing,
     status: mergedUrls.length <= 20 ? "approved" : "pending_approval",
     urls: mergedUrls,
-    estimatedCredits: mergedUrls.length * 2,
+    estimatedCredits: mergedUrls.length * 4,
   };
   await kv.put(batchKey(merged.id), JSON.stringify(merged));
   return merged;
@@ -166,26 +214,39 @@ async function discoverListingDomain(siteId: string, listingUrl: string): Promis
 async function queryTraffic(apiKey: string, domain: string): Promise<{
   data: TrafficData;
   costCredits: number;
-  remainingCredits: number;
 }> {
-  const endpoint = new URL("https://api-hub.sitedata.dev/api/v1/traffic");
-  endpoint.searchParams.set("domain", domain);
+  const headers = { authorization: `Bearer ${apiKey}`, accept: "application/json" };
+  const endpoint = new URL(`https://tabapi.com/api/v1/domains/${encodeURIComponent(domain)}/traffic`);
+  endpoint.searchParams.set("months", "3");
   const response = await fetch(endpoint, {
-    headers: { authorization: `Bearer ${apiKey}`, accept: "application/json" },
+    headers,
   });
-  const payload = (await response.json()) as {
-    code?: string;
+  const data = (await response.json()) as TrafficData & {
+    error?: { code?: string; message?: string };
     message?: string;
-    data?: TrafficData & { costCredits?: number; remainingCredits?: number };
   };
-  if (!response.ok || payload.code !== "ok" || !payload.data) {
-    throw new Error(`SiteData Traffic API 失败 ${response.status}: ${payload.message ?? payload.code ?? "未知错误"}`);
+  if (!response.ok || !data.overview) {
+    throw new Error(`TabAPI Traffic 失败 ${response.status}: ${data.error?.message ?? data.message ?? data.error?.code ?? "未知错误"}`);
   }
-  return {
-    data: payload.data,
-    costCredits: Number(payload.data.costCredits ?? 0),
-    remainingCredits: Number(payload.data.remainingCredits ?? 0),
-  };
+
+  let costCredits = data.monthly_visits?.length ?? 3;
+  try {
+    const rdapResponse = await fetch(`https://tabapi.com/api/v1/domains/${encodeURIComponent(domain)}/rdap`, { headers });
+    const rdap = await rdapResponse.json().catch(() => ({})) as {
+      events?: Array<{ eventAction?: string; eventDate?: string }>;
+      error?: { code?: string; message?: string };
+      message?: string;
+    };
+    if (rdapResponse.ok) {
+      data.registrationDate = rdap.events?.find((event) => event.eventAction === "registration")?.eventDate ?? "";
+      costCredits += 1;
+    } else {
+      data.registrationError = `TabAPI RDAP 失败 ${rdapResponse.status}: ${rdap.error?.message ?? rdap.message ?? rdap.error?.code ?? "未知错误"}`;
+    }
+  } catch (error) {
+    data.registrationError = `TabAPI RDAP 请求失败: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  return { data, costCredits };
 }
 
 export async function processAitdkQueue(
@@ -247,7 +308,6 @@ export async function processAitdkQueue(
         cached: false,
         assessment,
         costCredits: traffic.costCredits,
-        remainingCredits: traffic.remainingCredits,
       });
     } catch (error) {
       const attempts = (batch.attempts[listingUrl] ?? 0) + 1;

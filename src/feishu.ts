@@ -150,16 +150,45 @@ export async function notifyAitdkResults(webhook: string, summary: AitdkQueueSum
     }
     if (result.cached) lines.push("状态：使用 30 天缓存，未扣积分");
     if (result.assessment) {
-      lines.push(`月访问量：${result.assessment.visits}`);
-      lines.push(`搜索流量：${(result.assessment.searchShare * 100).toFixed(1)}%`);
-      lines.push(`直接访问：${(result.assessment.directShare * 100).toFixed(1)}%`);
-      lines.push(`注册时间：${result.assessment.registrationDate || "未提供（API未返回）"}`);
-      lines.push(`筛选结果：${result.assessment.qualified ? "符合数字条件" : "不符合数字条件"}`);
-      const keywords = result.assessment.nonBrandKeywords.slice(0, 10);
-      lines.push(`非品牌关键词：${keywords.length ? keywords.map((item) => `${item.name}（${item.volume}）`).join("、") : "未提供（API未返回）"}`);
+      const assessment = result.assessment;
+      const percent = (value: number | null | undefined) => value === null || value === undefined
+        ? "未提供"
+        : `${(value * 100).toFixed(1)}%`;
+      const sourceLabels: Record<string, string> = {
+        direct: "直接访问",
+        search: "搜索",
+        search_organic: "自然搜索",
+        search_paid: "付费搜索",
+        social: "社交",
+        social_organic: "自然社交",
+        social_paid: "付费社交",
+        referrals: "引荐",
+        paid_referrals: "付费引荐",
+        mail: "邮件",
+        gen_ai: "AI 助手",
+        affiliate: "联盟",
+        other: "其他",
+      };
+      lines.push(`网站标题：${assessment.title || "未提供（API未返回）"}`);
+      lines.push(`网站描述：${assessment.description || "未提供（API未返回）"}`);
+      lines.push(`报告月份：${assessment.reportingMonth || "未提供（API未返回）"}`);
+      lines.push(`月访问量：${assessment.visits}`);
+      lines.push(`全球排名：${assessment.globalRank ?? "未提供（API未返回）"}`);
+      lines.push(`国家排名：${assessment.countryRank ? `${assessment.countryRank.country} #${assessment.countryRank.rank}` : "未提供（API未返回）"}`);
+      lines.push(`跳出率：${percent(assessment.bounceRate)}`);
+      lines.push(`每次访问页数：${assessment.pagesPerVisit ?? "未提供（API未返回）"}`);
+      lines.push(`平均停留：${assessment.timeOnSiteSeconds === null ? "未提供（API未返回）" : `${assessment.timeOnSiteSeconds} 秒`}`);
+      lines.push(`注册时间：${assessment.registrationDate || "未提供（RDAP API 未返回）"}`);
+      if (assessment.registrationError) lines.push(`注册查询异常：${assessment.registrationError}`);
+      lines.push(`流量筛选：${assessment.qualified ? "符合条件" : "不符合条件"}`);
+      lines.push(`流量来源：${Object.entries(sourceLabels).map(([key, label]) => `${label} ${percent(assessment.trafficSources[key])}`).join("、")}`);
+      lines.push(`3 个月趋势：${assessment.monthlyVisits.length ? assessment.monthlyVisits.map((item) => `${item.month}：${item.visits}`).join("、") : "未提供（API未返回）"}`);
+      lines.push(`主要国家：${assessment.topRegions.length ? assessment.topRegions.slice(0, 10).map((item) => `${item.name}（${item.country}，${percent(item.share)}）`).join("、") : "未提供（API未返回）"}`);
+      lines.push(`关键词：${assessment.topKeywords.length ? assessment.topKeywords.slice(0, 10).map((item) => `${item.name}（搜索量 ${item.volume}，CPC $${item.cpc}，价值 $${item.estimatedValue}）`).join("、") : "未提供（API未返回）"}`);
+      lines.push(`非品牌关键词：${assessment.nonBrandKeywords.length ? assessment.nonBrandKeywords.slice(0, 10).map((item) => item.name).join("、") : "未提供（API未返回）"}`);
+      lines.push(`AI 流量：${assessment.aiTraffic?.trends.length ? assessment.aiTraffic.trends.map((trend) => `${trend.name}（${trend.history.slice(-3).map((item) => `${item.date}：${percent(item.value)}`).join("、")}）`).join("；") : "未提供（API未返回）"}`);
     }
     if (result.costCredits !== undefined) lines.push(`本次消耗：${result.costCredits} 积分`);
-    if (result.remainingCredits !== undefined) lines.push(`剩余积分：${result.remainingCredits}`);
   }
   await sendText(webhook, lines.join("\n"));
 }

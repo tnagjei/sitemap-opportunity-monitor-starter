@@ -41,10 +41,11 @@ npx wrangler kv namespace create SNAPSHOTS
 ```bash
 npx wrangler secret put FEISHU_WEBHOOK
 npx wrangler secret put MANUAL_RUN_SECRET
-npx wrangler secret put SITEDATA_API_KEY
+npx wrangler secret put TABAPI_API_KEY
 ```
 
 秘密不能写进 `wrangler.jsonc`、源代码或 Git。
+生产环境仍兼容旧名称 `SITEDATA_API_KEY`，不需要重新填写已有密钥。
 
 ### 部署
 
@@ -62,7 +63,8 @@ npm run deploy
 - 超过 20 条时全部写入 KV，飞书发送批次 ID 和预计最多积分，不会自动调用收费接口。
 - 在 Codex 明确批准批次后，队列每 15 分钟最多处理 20 条。
 - 同一域名的成功结果缓存 30 天。
-- Traffic API 每个实际查询预计消耗 2 积分；重复域名、无外部域名和缓存命中不调用。
+- TabAPI Traffic 查询 3 个月数据消耗 3 积分，RDAP 注册日期查询消耗 1 积分，每个新域名预计最多 4 积分。
+- 重复域名、无外部域名和缓存命中不调用收费接口。
 
 ## 添加更多站点
 

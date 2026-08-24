@@ -3,6 +3,7 @@ export interface Env {
   FEISHU_WEBHOOK: string;
   MANUAL_RUN_SECRET?: string;
   SITEDATA_API_KEY?: string;
+  TABAPI_API_KEY?: string;
   MAX_AITDK_DOMAINS_PER_RUN?: string;
   MAX_NEW_PAGES?: string;
   MAX_SITEMAPS_PER_SITE?: string;
