@@ -110,3 +110,46 @@ test("队列对重复域名只调用一次 Traffic API 并缓存 30 天", async 
     globalThis.fetch = originalFetch;
   }
 });
+
+test("Creem 批次从商店页提取官网后查询 Traffic API", async () => {
+  const kv = memoryKv();
+  await enqueueAitdkBatch(
+    kv,
+    "creem",
+    ["https://www.creem.io/stores/example-tool"],
+    new Date("2026-08-24T00:00:00Z"),
+  );
+  const originalFetch = globalThis.fetch;
+  let queriedDomain = "";
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "https://www.creem.io/stores/example-tool") {
+      return new Response(
+        `<h1>Example Tool</h1><a href="https://www.exampletool.com/pricing" target="_blank">官网</a>`,
+        { headers: { "content-type": "text/html" } },
+      );
+    }
+    queriedDomain = new URL(url).searchParams.get("domain") ?? "";
+    return Response.json({
+      code: "ok",
+      data: {
+        costCredits: 2,
+        remainingCredits: 96,
+        SiteName: "Example Tool",
+        Engagments: { Visits: "12000" },
+        TrafficSources: { Search: 0.35, Direct: 0.4 },
+        DateData: { registration: "2026-02-01T00:00:00Z" },
+        TopKeywords: [{ Name: "remove image watermark", Volume: 500 }],
+      },
+    });
+  };
+
+  try {
+    const summary = await processAitdkQueue(kv, "secret", 20, new Date("2026-08-24T03:00:00Z"));
+    assert.equal(queriedDomain, "exampletool.com");
+    assert.equal(summary.queriedCount, 1);
+    assert.equal(summary.batchStatus, "completed");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

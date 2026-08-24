@@ -155,3 +155,62 @@ test("PMKG 新增超过页面分析上限时全部进入 AITDK 批次并写入�
     globalThis.fetch = originalFetch;
   }
 });
+
+test("Creem 新商店全部进入 AITDK 批次并写入快照", async () => {
+  const originalFetch = globalThis.fetch;
+  const values = new Map<string, string>([
+    ["snapshot:creem", JSON.stringify({
+      sitemapUrl: "https://creem.test/sitemap.xml",
+      scannedAt: "2026-08-23T00:00:00.000Z",
+      urls: ["https://www.creem.io/stores/old"],
+    })],
+  ]);
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "https://creem.test/sitemap.xml") {
+      return new Response(
+        "<urlset>" +
+          ["old", "a", "b", "c"].map((slug) => `<url><loc>https://www.creem.io/stores/${slug}</loc></url>`).join("") +
+          "</urlset>",
+      );
+    }
+    if (url.startsWith("https://www.creem.io/stores/")) {
+      return new Response(`<title>Creem Store</title><h1>Creem Store</h1>`, {
+        headers: { "content-type": "text/html" },
+      });
+    }
+    return Response.json({ code: 0 });
+  };
+
+  const env = {
+    SNAPSHOTS: {
+      get: async (key: string) => {
+        const value = values.get(key);
+        return value ? JSON.parse(value) : null;
+      },
+      put: async (key: string, value: string) => {
+        values.set(key, value);
+      },
+    },
+    FEISHU_WEBHOOK: "https://example.com/webhook",
+    MAX_NEW_PAGES: "1",
+    MONITORED_SITEMAPS: JSON.stringify([
+      {
+        id: "creem",
+        name: "Creem",
+        url: "https://creem.test/sitemap.xml",
+        pathPrefix: "https://www.creem.io/stores/",
+        analyzeLinkedSite: true,
+      },
+    ]),
+  } as unknown as Env;
+
+  try {
+    await runMonitor(env);
+    const today = new Date().toISOString().slice(0, 10);
+    assert.equal(JSON.parse(values.get(`aitdk:batch:creem-${today}`) ?? "{}").urls.length, 3);
+    assert.equal(JSON.parse(values.get("snapshot:creem") ?? "{}").urls.length, 4);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

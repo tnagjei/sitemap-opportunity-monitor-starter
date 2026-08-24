@@ -1,4 +1,4 @@
-import { extractExternalUrl } from "./page";
+import { extractCreemExternalUrl, extractExternalUrl } from "./page";
 
 export type AitdkBatchStatus = "approved" | "pending_approval" | "completed";
 
@@ -150,13 +150,16 @@ function normalizeDomain(url: string): string {
   return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
 }
 
-async function discoverPmkgDomain(listingUrl: string): Promise<string | undefined> {
+async function discoverListingDomain(siteId: string, listingUrl: string): Promise<string | undefined> {
   const response = await fetch(listingUrl, {
     headers: { "user-agent": "Mozilla/5.0 (compatible; SitemapOpportunityMonitor/1.0)" },
     redirect: "follow",
   });
-  if (!response.ok) throw new Error(`PMKG 详情页请求失败 ${response.status}`);
-  const externalUrl = extractExternalUrl(await response.text());
+  if (!response.ok) throw new Error(`目录详情页请求失败 ${response.status}`);
+  const html = await response.text();
+  const externalUrl = siteId === "creem"
+    ? extractCreemExternalUrl(html)
+    : extractExternalUrl(html);
   return externalUrl ? normalizeDomain(externalUrl) : undefined;
 }
 
@@ -215,7 +218,7 @@ export async function processAitdkQueue(
 
   for (const listingUrl of selected) {
     try {
-      const domain = await discoverPmkgDomain(listingUrl);
+      const domain = await discoverListingDomain(batch.siteId, listingUrl);
       if (!domain) {
         skippedCount += 1;
         results.push({ listingUrl, cached: false, error: "未提取到外部域名" });

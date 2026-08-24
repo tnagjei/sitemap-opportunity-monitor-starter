@@ -52,7 +52,8 @@ export async function runMonitor(env: Env): Promise<Record<string, unknown>> {
         continue;
       }
 
-      const aitdkBatch = site.id === "pmkg"
+      const usesAitdk = site.id === "pmkg" || site.id === "creem";
+      const aitdkBatch = usesAitdk
         ? await enqueueAitdkBatch(env.SNAPSHOTS, site.id, newUrls)
         : undefined;
       if (aitdkBatch) await notifyAitdkBatch(env.FEISHU_WEBHOOK, aitdkBatch);
@@ -76,7 +77,7 @@ export async function runMonitor(env: Env): Promise<Record<string, unknown>> {
       const snapshot: Snapshot = {
         sitemapUrl: site.url,
         scannedAt: new Date().toISOString(),
-        urls: site.id === "pmkg"
+        urls: usesAitdk
           ? currentUrls
           : currentUrls.filter((url) => !newSet.has(url) || selectedSet.has(url)),
       };
