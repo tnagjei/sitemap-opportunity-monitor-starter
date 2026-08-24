@@ -91,7 +91,7 @@ export async function collectPageUrls(
     }
 
     if (parsed.kind === "urlset") {
-      for (const pageUrl of parsed.locations) pageUrls.add(pageUrl);
+      for (const pageUrl of parsed.locations) pageUrls.add(new URL(pageUrl).toString());
       continue;
     }
 
@@ -112,6 +112,7 @@ export function findNewUrls(current: string[], previous: string[]): string[] {
 export function filterUrlsByPrefix(urls: string[], prefix: string): string[] {
   return urls.filter((url) => {
     if (!url.startsWith(prefix)) return false;
-    return /^https?:\/\/[^/]+\/sites\/\d+\.html(?:$|[?#])/.test(url);
+    // ponytail: PMKG needs its numeric detail-page rule; add configurable matchers only when another source needs one.
+    return prefix !== "https://www.pmkg.net/sites/" || /^https?:\/\/[^/]+\/sites\/\d+\.html(?:$|[?#])/.test(url);
   });
 }

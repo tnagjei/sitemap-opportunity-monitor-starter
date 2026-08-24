@@ -1,5 +1,5 @@
 import { buildKeywordCandidates, stripTags } from "./keywords";
-import type { ExternalPageAnalysis, PageAnalysis } from "./types";
+import type { ExternalPageAnalysis, PageAnalysis, StoreProduct } from "./types";
 
 const USER_AGENT =
   "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)";
@@ -40,6 +40,47 @@ export function extractExternalUrl(html: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+export function extractCreemExternalUrl(html: string): string | undefined {
+  const h1End = html.search(/<\/h1>/i);
+  if (h1End < 0) return undefined;
+  const productStart = html.search(/href=["']https?:\/\/(?:www\.)?creem\.io\/product\//i);
+  const header = html.slice(h1End, productStart > h1End ? productStart : h1End + 5_000);
+
+  for (const match of header.matchAll(/<a\b([^>]*)>/gi)) {
+    const attributes = match[1] ?? "";
+    if (!/\btarget=["']_blank["']/i.test(attributes)) continue;
+    const href = /\bhref=["'](https?:\/\/[^"']+)["']/i.exec(attributes)?.[1];
+    if (!href) continue;
+    try {
+      const url = new URL(href);
+      if (url.hostname === "creem.io" || url.hostname.endsWith(".creem.io")) continue;
+      return url.toString();
+    } catch {
+      continue;
+    }
+  }
+  return undefined;
+}
+
+export function extractCreemProducts(html: string): StoreProduct[] {
+  const products: StoreProduct[] = [];
+  const seen = new Set<string>();
+  const pattern = /<a\b[^>]*href=["'](https?:\/\/(?:www\.)?creem\.io\/product\/[^"']+)["'][^>]*>([\s\S]*?)<\/a>/gi;
+
+  for (const match of html.matchAll(pattern)) {
+    const url = match[1] ?? "";
+    const body = match[2] ?? "";
+    if (!url || seen.has(url)) continue;
+    const name = firstMatch(body, /<h3\b[^>]*>([\s\S]*?)<\/h3>/i);
+    const price = firstMatch(body, />\s*Price\s*<\/span>[\s\S]*?<span\b[^>]*>([\s\S]*?)<\/span>/i);
+    if (!name) continue;
+    seen.add(url);
+    products.push({ name, price: price || "未提供（页面未解析到）", url });
+  }
+
+  return products;
 }
 
 async function analyzeExternalPage(url: string): Promise<ExternalPageAnalysis> {
@@ -101,13 +142,22 @@ export async function analyzePage(url: string, analyzeLinkedSite = false): Promi
 
     const html = await response.text();
     const fields = extractPageFields(html);
-    const externalUrl = analyzeLinkedSite ? extractExternalUrl(html) : undefined;
+    const parsedUrl = new URL(url);
+    const isCreemStore =
+      (parsedUrl.hostname === "creem.io" || parsedUrl.hostname === "www.creem.io") &&
+      parsedUrl.pathname.startsWith("/stores/");
+    const externalUrl = analyzeLinkedSite
+      ? isCreemStore
+        ? extractCreemExternalUrl(html)
+        : extractExternalUrl(html)
+      : undefined;
     return {
       url,
       status: response.status,
       ...fields,
       keywords: buildKeywordCandidates(url, fields.title, fields.h1),
       external: externalUrl ? await analyzeExternalPage(externalUrl) : undefined,
+      products: isCreemStore ? extractCreemProducts(html) : undefined,
     };
   } catch (error) {
     return {

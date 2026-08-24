@@ -29,7 +29,14 @@ export interface PageAnalysis {
   description: string;
   keywords: string[];
   external?: ExternalPageAnalysis;
+  products?: StoreProduct[];
   error?: string;
+}
+
+export interface StoreProduct {
+  name: string;
+  price: string;
+  url: string;
 }
 
 export interface ExternalPageAnalysis {

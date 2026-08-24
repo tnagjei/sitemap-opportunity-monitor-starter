@@ -52,6 +52,36 @@ test("只保留 PMKG 站点详情页", () => {
   );
 });
 
+test("按通用网址前缀保留 Creem 商店详情页", () => {
+  assert.deepEqual(
+    filterUrlsByPrefix(
+      [
+        "https://www.creem.io/stores",
+        "https://www.creem.io/stores/reply-fast",
+        "https://www.creem.io/product/prod_123",
+      ],
+      "https://www.creem.io/stores/",
+    ),
+    ["https://www.creem.io/stores/reply-fast"],
+  );
+});
+
+test("规范化 Sitemap 中含空格的网址", async () => {
+  mockFetch({
+    "https://a.com/sitemap.xml": new Response(
+      "<urlset><url><loc>https://a.com/stores/xapi korea</loc></url></urlset>",
+      { status: 200, headers: { "content-type": "application/xml" } },
+    ),
+  });
+  try {
+    assert.deepEqual(await collectPageUrls("https://a.com/sitemap.xml"), [
+      "https://a.com/stores/xapi%20korea",
+    ]);
+  } finally {
+    restoreFetch();
+  }
+});
+
 test("子 Sitemap 返回验证页时跳过并继续收集", async () => {
   mockFetch({
     "https://a.com/index.xml": new Response(INDEX_XML, { status: 200, headers: { "content-type": "application/xml" } }),

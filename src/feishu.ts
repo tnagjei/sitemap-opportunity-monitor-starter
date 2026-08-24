@@ -13,12 +13,23 @@ function formatAnalysis(item: PageAnalysis, index: number): string {
   if (item.description) lines.push(`Description：${item.description.slice(0, 240)}`);
   if (item.error) lines.push(`异常：${item.error}`);
   if (item.external) {
-    lines.push(`提交网站：${item.external.url}`);
-    lines.push(`提交网站状态码：${item.external.status ?? "未知"}`);
-    if (item.external.title) lines.push(`提交网站 Title：${item.external.title}`);
-    if (item.external.h1) lines.push(`提交网站 H1：${item.external.h1}`);
-    if (item.external.description) lines.push(`提交网站 Description：${item.external.description.slice(0, 240)}`);
-    if (item.external.error) lines.push(`提交网站异常：${item.external.error}`);
+    lines.push(`关联官网：${item.external.url}`);
+    lines.push(`关联官网状态码：${item.external.status ?? "未知"}`);
+    if (item.external.title) lines.push(`关联官网 Title：${item.external.title}`);
+    if (item.external.h1) lines.push(`关联官网 H1：${item.external.h1}`);
+    if (item.external.description) lines.push(`关联官网 Description：${item.external.description.slice(0, 240)}`);
+    if (item.external.error) lines.push(`关联官网异常：${item.external.error}`);
+  }
+  if (item.products?.length) {
+    const shownProducts = item.products.slice(0, 10);
+    lines.push(`公开产品（${item.products.length} 个）：`);
+    for (const product of shownProducts) {
+      lines.push(`• ${product.name}：${product.price}`);
+      lines.push(`  产品页：${product.url}`);
+    }
+    if (item.products.length > shownProducts.length) {
+      lines.push(`另有 ${item.products.length - shownProducts.length} 个产品未展开。`);
+    }
   }
 
   if (item.keywords.length > 0) {

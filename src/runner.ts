@@ -65,13 +65,21 @@ export async function runMonitor(env: Env): Promise<Record<string, unknown>> {
       // 先通知，后更新快照。通知失败时，下一次仍会重试这些新增网址。
       await notifySiteResult(env.FEISHU_WEBHOOK, result);
 
+      const selectedSet = new Set(selected);
+      const newSet = new Set(newUrls);
       const snapshot: Snapshot = {
         sitemapUrl: site.url,
         scannedAt: new Date().toISOString(),
-        urls: currentUrls,
+        urls: currentUrls.filter((url) => !newSet.has(url) || selectedSet.has(url)),
       };
       await env.SNAPSHOTS.put(snapshotKey(site.id), JSON.stringify(snapshot));
-      summary.push({ site: site.id, baselineCreated: false, totalUrls: currentUrls.length, newUrls: newUrls.length });
+      summary.push({
+        site: site.id,
+        baselineCreated: false,
+        totalUrls: currentUrls.length,
+        newUrls: newUrls.length,
+        remainingUrls: result.omittedCount,
+      });
     } catch (error) {
       summary.push({ site: site.id, error: error instanceof Error ? error.message : String(error) });
       try {
