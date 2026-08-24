@@ -90,3 +90,68 @@ test("新增网址超过上限时只把已通知的网址写入快照", async ()
     globalThis.fetch = originalFetch;
   }
 });
+
+test("PMKG 新增超过页面分析上限时全部进入 AITDK 批次并写入快照", async () => {
+  const originalFetch = globalThis.fetch;
+  const values = new Map<string, string>([
+    ["snapshot:pmkg", JSON.stringify({
+      sitemapUrl: "https://pmkg.test/sitemap.xml",
+      scannedAt: "2026-08-23T00:00:00.000Z",
+      urls: ["https://www.pmkg.net/sites/1.html"],
+    })],
+  ]);
+  const encoded = encodeURIComponent(btoa("https://example.com/"));
+  globalThis.fetch = async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url === "https://pmkg.test/sitemap.xml") {
+      return new Response(
+        "<urlset>" +
+          [1, 2, 3, 4].map((id) => `<url><loc>https://www.pmkg.net/sites/${id}.html</loc></url>`).join("") +
+          "</urlset>",
+      );
+    }
+    if (url === "https://www.pmkg.net/sites/2.html") {
+      return new Response(`<title>PMKG</title><h1>PMKG</h1><a href="https://www.pmkg.net/go/?url=${encoded}">官网</a>`, {
+        headers: { "content-type": "text/html" },
+      });
+    }
+    if (url === "https://example.com/") {
+      return new Response("<title>Example</title><h1>Example</h1>", {
+        headers: { "content-type": "text/html" },
+      });
+    }
+    return Response.json({ code: 0 });
+  };
+
+  const env = {
+    SNAPSHOTS: {
+      get: async (key: string) => {
+        const value = values.get(key);
+        return value ? JSON.parse(value) : null;
+      },
+      put: async (key: string, value: string) => {
+        values.set(key, value);
+      },
+    },
+    FEISHU_WEBHOOK: "https://example.com/webhook",
+    MAX_NEW_PAGES: "1",
+    MONITORED_SITEMAPS: JSON.stringify([
+      {
+        id: "pmkg",
+        name: "PMKG",
+        url: "https://pmkg.test/sitemap.xml",
+        pathPrefix: "https://www.pmkg.net/sites/",
+        analyzeLinkedSite: true,
+      },
+    ]),
+  } as unknown as Env;
+
+  try {
+    await runMonitor(env);
+    const today = new Date().toISOString().slice(0, 10);
+    assert.equal(JSON.parse(values.get(`aitdk:batch:pmkg-${today}`) ?? "{}").urls.length, 3);
+    assert.equal(JSON.parse(values.get("snapshot:pmkg") ?? "{}").urls.length, 4);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});

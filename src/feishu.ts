@@ -1,4 +1,5 @@
 import { googleTrendsUrl } from "./keywords";
+import type { AitdkBatch, AitdkQueueSummary } from "./aitdk";
 import type { PageAnalysis, SiteRunResult } from "./types";
 
 const MAX_MESSAGE_CHARS = 15_000;
@@ -113,6 +114,54 @@ export async function notifyNoNewPages(
     `今日无新增页面。`,
   ].join("\n");
   await sendText(webhook, message);
+}
+
+export async function notifyAitdkBatch(webhook: string, batch: AitdkBatch): Promise<void> {
+  const approval = batch.status === "pending_approval"
+    ? `需要批准。在 Codex 回复：批准 AITDK 批次 ${batch.id}`
+    : "20 个以内，已自动批准。";
+  await sendText(
+    webhook,
+    [
+      "【AITDK 待验证批次】",
+      `批次 ID：${batch.id}`,
+      `待验证条目：${batch.urls.length}`,
+      `预计最多消耗：${batch.estimatedCredits} 积分`,
+      approval,
+    ].join("\n"),
+  );
+}
+
+export async function notifyAitdkResults(webhook: string, summary: AitdkQueueSummary): Promise<void> {
+  if (!summary.batchId || summary.results.length === 0) return;
+  const lines = [
+    "【AITDK 流量验证】",
+    `批次 ID：${summary.batchId}`,
+    `本轮实际查询：${summary.queriedCount}`,
+    `缓存或跳过：${summary.skippedCount}`,
+    `失败：${summary.failedCount}`,
+    `批次剩余：${summary.remainingUrls}`,
+  ];
+  for (const result of summary.results) {
+    lines.push("", result.domain ? `域名：${result.domain}` : `目录页：${result.listingUrl}`);
+    if (result.error) {
+      lines.push(`状态：${result.error}`);
+      continue;
+    }
+    if (result.cached) lines.push("状态：使用 30 天缓存，未扣积分");
+    if (result.assessment) {
+      lines.push(`月访问量：${result.assessment.visits}`);
+      lines.push(`搜索流量：${(result.assessment.searchShare * 100).toFixed(1)}%`);
+      lines.push(`直接访问：${(result.assessment.directShare * 100).toFixed(1)}%`);
+      lines.push(`注册时间：${result.assessment.registrationDate || "未提供（API未返回）"}`);
+      lines.push(`筛选结果：${result.assessment.qualified ? "符合数字条件" : "不符合数字条件"}`);
+      const keywords = result.assessment.nonBrandKeywords.slice(0, 10);
+      lines.push(`非品牌关键词：${keywords.length ? keywords.map((item) => `${item.name}（${item.volume}）`).join("、") : "未提供（API未返回）"}`);
+    }
+    if (result.costCredits !== undefined) lines.push(`本次消耗：${result.costCredits} 积分`);
+    if (result.remainingCredits !== undefined) lines.push(`剩余积分：${result.remainingCredits}`);
+  }
+  await sendText(webhook, lines.join("\n"));
 }
 
 export async function notifyError(webhook: string, siteName: string, error: unknown): Promise<void> {

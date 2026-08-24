@@ -1,4 +1,5 @@
-import { runMonitor } from "./runner";
+import { approveAitdkBatch } from "./aitdk";
+import { runAitdkMonitor, runMonitor } from "./runner";
 import type { Env } from "./types";
 
 function json(value: unknown, status = 200): Response {
@@ -23,10 +24,22 @@ export default {
       return json(await runMonitor(env));
     }
 
+    if (request.method === "POST" && url.pathname === "/aitdk/approve") {
+      if (!authorized(request, env)) return json({ ok: false, error: "Unauthorized" }, 401);
+      const body = await request.json().catch(() => null) as { batchId?: string } | null;
+      const batchId = body?.batchId?.trim() ?? "";
+      if (!/^[a-z0-9_-]+$/i.test(batchId)) return json({ ok: false, error: "Invalid batchId" }, 400);
+      try {
+        return json({ ok: true, batch: await approveAitdkBatch(env.SNAPSHOTS, batchId) });
+      } catch (error) {
+        return json({ ok: false, error: error instanceof Error ? error.message : String(error) }, 404);
+      }
+    }
+
     return json({ ok: false, error: "Not found" }, 404);
   },
 
-  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(runMonitor(env));
+  async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(controller.cron === "0 21 * * *" ? runMonitor(env) : runAitdkMonitor(env));
   },
 } satisfies ExportedHandler<Env>;

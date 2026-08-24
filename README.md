@@ -41,6 +41,7 @@ npx wrangler kv namespace create SNAPSHOTS
 ```bash
 npx wrangler secret put FEISHU_WEBHOOK
 npx wrangler secret put MANUAL_RUN_SECRET
+npx wrangler secret put SITEDATA_API_KEY
 ```
 
 秘密不能写进 `wrangler.jsonc`、源代码或 Git。
@@ -53,7 +54,15 @@ npm run deploy
 
 ## 定时设置
 
-默认 Cron 为 `0 1 * * *`，即每天 01:00 UTC 执行，对应中国标准时间 09:00。
+每天 `0 21 * * *` 扫描 Sitemap，对应中国标准时间 05:00。每 15 分钟处理一次已批准的 AITDK 队列；没有待处理批次时不会调用 Traffic API。
+
+## PMKG 与 AITDK
+
+- PMKG 当日新增不超过 20 条时自动批准 AITDK 查询。
+- 超过 20 条时全部写入 KV，飞书发送批次 ID 和预计最多积分，不会自动调用收费接口。
+- 在 Codex 明确批准批次后，队列每 15 分钟最多处理 20 条。
+- 同一域名的成功结果缓存 30 天。
+- Traffic API 每个实际查询预计消耗 2 积分；重复域名、无外部域名和缓存命中不调用。
 
 ## 添加更多站点
 

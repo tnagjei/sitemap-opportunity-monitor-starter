@@ -1,5 +1,6 @@
 import { parsePositiveInt, parseSites } from "./config";
-import { notifyError, notifyNoNewPages, notifySiteResult } from "./feishu";
+import { enqueueAitdkBatch, processAitdkQueue } from "./aitdk";
+import { notifyAitdkBatch, notifyAitdkResults, notifyError, notifyNoNewPages, notifySiteResult } from "./feishu";
 import { analyzePage } from "./page";
 import { collectPageUrls, filterUrlsByPrefix, findNewUrls } from "./sitemap";
 import type { Env, SiteRunResult, Snapshot } from "./types";
@@ -51,6 +52,11 @@ export async function runMonitor(env: Env): Promise<Record<string, unknown>> {
         continue;
       }
 
+      const aitdkBatch = site.id === "pmkg"
+        ? await enqueueAitdkBatch(env.SNAPSHOTS, site.id, newUrls)
+        : undefined;
+      if (aitdkBatch) await notifyAitdkBatch(env.FEISHU_WEBHOOK, aitdkBatch);
+
       const selected = newUrls.slice(0, maxNewPages);
       const analyses = await analyzeSequentially(selected, site.analyzeLinkedSite);
       const result: SiteRunResult = {
@@ -70,7 +76,9 @@ export async function runMonitor(env: Env): Promise<Record<string, unknown>> {
       const snapshot: Snapshot = {
         sitemapUrl: site.url,
         scannedAt: new Date().toISOString(),
-        urls: currentUrls.filter((url) => !newSet.has(url) || selectedSet.has(url)),
+        urls: site.id === "pmkg"
+          ? currentUrls
+          : currentUrls.filter((url) => !newSet.has(url) || selectedSet.has(url)),
       };
       await env.SNAPSHOTS.put(snapshotKey(site.id), JSON.stringify(snapshot));
       summary.push({
@@ -79,6 +87,7 @@ export async function runMonitor(env: Env): Promise<Record<string, unknown>> {
         totalUrls: currentUrls.length,
         newUrls: newUrls.length,
         remainingUrls: result.omittedCount,
+        ...(aitdkBatch ? { aitdkBatch: aitdkBatch.id, aitdkStatus: aitdkBatch.status } : {}),
       });
     } catch (error) {
       summary.push({ site: site.id, error: error instanceof Error ? error.message : String(error) });
@@ -91,4 +100,17 @@ export async function runMonitor(env: Env): Promise<Record<string, unknown>> {
   }
 
   return { ranAt: new Date().toISOString(), results: summary };
+}
+
+export async function runAitdkMonitor(env: Env): Promise<Record<string, unknown>> {
+  try {
+    if (!env.SITEDATA_API_KEY) throw new Error("缺少 SITEDATA_API_KEY");
+    const limit = parsePositiveInt(env.MAX_AITDK_DOMAINS_PER_RUN, 20);
+    const summary = await processAitdkQueue(env.SNAPSHOTS, env.SITEDATA_API_KEY, limit);
+    await notifyAitdkResults(env.FEISHU_WEBHOOK, summary);
+    return { ranAt: new Date().toISOString(), ...summary };
+  } catch (error) {
+    await notifyError(env.FEISHU_WEBHOOK, "AITDK 流量验证", error);
+    return { ranAt: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) };
+  }
 }

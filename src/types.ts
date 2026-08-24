@@ -2,6 +2,8 @@ export interface Env {
   SNAPSHOTS: KVNamespace;
   FEISHU_WEBHOOK: string;
   MANUAL_RUN_SECRET?: string;
+  SITEDATA_API_KEY?: string;
+  MAX_AITDK_DOMAINS_PER_RUN?: string;
   MAX_NEW_PAGES?: string;
   MAX_SITEMAPS_PER_SITE?: string;
   MONITORED_SITEMAPS: string;
