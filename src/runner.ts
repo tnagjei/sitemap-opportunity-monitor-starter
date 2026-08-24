@@ -27,6 +27,7 @@ export async function runMonitor(env: Env): Promise<Record<string, unknown>> {
       const previous = await env.SNAPSHOTS.get<Snapshot>(snapshotKey(site.id), "json");
 
       if (!previous) {
+        await notifyNoNewPages(env.FEISHU_WEBHOOK, site.name, site.url, currentUrls.length);
         const baseline: Snapshot = {
           sitemapUrl: site.url,
           scannedAt: new Date().toISOString(),
