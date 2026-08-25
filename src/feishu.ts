@@ -116,6 +116,25 @@ export async function notifyNoNewPages(
   await sendText(webhook, message);
 }
 
+export async function notifyDailyMonitorStarted(webhook: string, date: string, siteCount: number): Promise<void> {
+  await sendText(
+    webhook,
+    `【Sitemap 每日监控开始】\n日期：${date}\n已创建 ${siteCount} 个站点的逐站扫描队列，每 5 分钟处理一个。`,
+  );
+}
+
+export async function notifyDailyMonitorCompleted(
+  webhook: string,
+  date: string,
+  completedCount: number,
+  failedCount: number,
+): Promise<void> {
+  await sendText(
+    webhook,
+    `【Sitemap 每日监控完成】\n日期：${date}\n成功：${completedCount} 个站点\n失败：${failedCount} 个站点`,
+  );
+}
+
 export async function notifyAitdkBatch(webhook: string, batch: AitdkBatch): Promise<void> {
   const approval = batch.status === "pending_approval"
     ? `需要批准。在 Codex 回复：批准 AITDK 批次 ${batch.id}`

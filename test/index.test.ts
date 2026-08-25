@@ -4,6 +4,44 @@ import worker from "../src/index";
 import { createAitdkBatch } from "../src/aitdk";
 import type { Env } from "../src/types";
 
+test("受保护的 /run 只创建每日队列，不直接扫描全部站点", async (t) => {
+  const requests: string[] = [];
+  const values = new Map<string, string>();
+  t.mock.method(globalThis, "fetch", async (input: RequestInfo | URL) => {
+    requests.push(String(input));
+    return Response.json({ code: 0 });
+  });
+  const env = {
+    SNAPSHOTS: {
+      get: async (key: string) => {
+        const value = values.get(key);
+        return value ? JSON.parse(value) : null;
+      },
+      put: async (key: string, value: string) => {
+        values.set(key, value);
+      },
+    },
+    FEISHU_WEBHOOK: "https://feishu.test/webhook",
+    MANUAL_RUN_SECRET: "manual-secret",
+    MONITORED_SITEMAPS: JSON.stringify([
+      { id: "example", name: "Example", url: "https://example.test/sitemap.xml" },
+    ]),
+  } as unknown as Env;
+
+  const response = await worker.fetch(
+    new Request("https://worker.test/run", {
+      method: "POST",
+      headers: { authorization: "Bearer manual-secret" },
+    }),
+    env,
+  );
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(requests, ["https://feishu.test/webhook"]);
+  const body = await response.json() as Record<string, unknown>;
+  assert.equal(body.status, "active");
+});
+
 test("受保护接口批准指定 AITDK 批次", async () => {
   const batch = createAitdkBatch("pmkg", Array.from({ length: 21 }, (_, index) => `https://pmkg.test/${index}`), new Date("2026-08-24T00:00:00Z"));
   const values = new Map([[`aitdk:batch:${batch.id}`, JSON.stringify(batch)]]);

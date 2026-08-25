@@ -1,5 +1,5 @@
 import { approveAitdkBatch } from "./aitdk";
-import { runAitdkMonitor, runMonitor } from "./runner";
+import { runAitdkMonitor, runNextScheduledJob, startDailyMonitor } from "./runner";
 import type { Env } from "./types";
 
 function json(value: unknown, status = 200): Response {
@@ -21,7 +21,12 @@ export default {
 
     if (request.method === "POST" && url.pathname === "/run") {
       if (!authorized(request, env)) return json({ ok: false, error: "Unauthorized" }, 401);
-      return json(await runMonitor(env));
+      return json(await startDailyMonitor(env));
+    }
+
+    if (request.method === "POST" && url.pathname === "/run-next") {
+      if (!authorized(request, env)) return json({ ok: false, error: "Unauthorized" }, 401);
+      return json(await runNextScheduledJob(env));
     }
 
     if (request.method === "POST" && url.pathname === "/aitdk/run") {
@@ -45,6 +50,6 @@ export default {
   },
 
   async scheduled(controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
-    ctx.waitUntil(controller.cron === "0 21 * * *" ? runMonitor(env) : runAitdkMonitor(env));
+    ctx.waitUntil(controller.cron === "0 21 * * *" ? startDailyMonitor(env) : runNextScheduledJob(env));
   },
 } satisfies ExportedHandler<Env>;

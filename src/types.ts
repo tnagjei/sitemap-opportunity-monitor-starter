@@ -24,6 +24,18 @@ export interface Snapshot {
   urls: string[];
 }
 
+export interface DailyMonitorQueue {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+  status: "active" | "completed";
+  startNotified: boolean;
+  remainingSiteIds: string[];
+  completedSiteIds: string[];
+  failedSites: Record<string, string>;
+  attempts: Record<string, number>;
+}
+
 export interface PageAnalysis {
   url: string;
   status: number | null;
