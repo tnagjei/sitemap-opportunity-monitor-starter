@@ -17,6 +17,34 @@ test("提取 title、h1 和 description", () => {
   });
 });
 
+test("每条页面分析保留 URL、slug 和标准化 keyword", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => new Response("<title>Example</title>", {
+    headers: { "content-type": "text/html" },
+  });
+  const cases = [
+    ["https://example.com/ai-image-maker", "ai-image-maker", "ai image maker"],
+    ["https://example.com/photo-editor-online/", "photo-editor-online", "photo editor online"],
+    ["https://example.com/image_to_video_ai?ref=test", "image_to_video_ai", "image to video ai"],
+    ["https://example.com/free--logo--maker#section", "free--logo--maker", "free logo maker"],
+    ["https://example.com/keyword", "keyword", "keyword"],
+  ] as const;
+
+  try {
+    for (const [url, slug, keyword] of cases) {
+      const result = await analyzePage(url) as Awaited<ReturnType<typeof analyzePage>> & {
+        slug?: string;
+        keyword?: string;
+      };
+      assert.equal(result.url, url);
+      assert.equal(result.slug, slug);
+      assert.equal(result.keyword, keyword);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("从 PMKG 跳转链接提取提交的网站", () => {
   const html = `<a href="https://www.pmkg.net/go/?url=aHR0cHM6Ly9leGFtcGxlLmNvbQ%3D%3D">主站</a><a href="https://www.pmkg.net/go/?url=aHR0cHM6Ly9kb2NzLmV4YW1wbGUuY29t">文档</a>`;
   assert.equal(extractExternalUrl(html), "https://example.com");

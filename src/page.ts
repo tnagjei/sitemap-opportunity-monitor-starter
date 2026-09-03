@@ -1,4 +1,4 @@
-import { buildKeywordCandidates, stripTags } from "./keywords";
+import { buildKeywordCandidates, slugKeyword, stripTags, urlSlug } from "./keywords";
 import type { ExternalPageAnalysis, PageAnalysis, StoreProduct } from "./types";
 
 const USER_AGENT =
@@ -106,6 +106,8 @@ async function analyzeExternalPage(url: string): Promise<ExternalPageAnalysis> {
 }
 
 export async function analyzePage(url: string, analyzeLinkedSite = false): Promise<PageAnalysis> {
+  const slug = urlSlug(url);
+  const keyword = slugKeyword(url);
   try {
     const response = await fetch(url, {
       headers: {
@@ -119,6 +121,8 @@ export async function analyzePage(url: string, analyzeLinkedSite = false): Promi
     if (!response.ok) {
       return {
         url,
+        slug,
+        keyword,
         status: response.status,
         title: "",
         h1: "",
@@ -131,6 +135,8 @@ export async function analyzePage(url: string, analyzeLinkedSite = false): Promi
     if (!contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) {
       return {
         url,
+        slug,
+        keyword,
         status: response.status,
         title: "",
         h1: "",
@@ -153,6 +159,8 @@ export async function analyzePage(url: string, analyzeLinkedSite = false): Promi
       : undefined;
     return {
       url,
+      slug,
+      keyword,
       status: response.status,
       ...fields,
       keywords: buildKeywordCandidates(url, fields.title, fields.h1),
@@ -162,6 +170,8 @@ export async function analyzePage(url: string, analyzeLinkedSite = false): Promi
   } catch (error) {
     return {
       url,
+      slug,
+      keyword,
       status: null,
       title: "",
       h1: "",

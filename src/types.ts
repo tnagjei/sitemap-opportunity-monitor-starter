@@ -38,6 +38,8 @@ export interface DailyMonitorQueue {
 
 export interface PageAnalysis {
   url: string;
+  slug: string;
+  keyword: string;
   status: number | null;
   title: string;
   h1: string;

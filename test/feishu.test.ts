@@ -22,6 +22,8 @@ test("Creem 新商店通知包含官网、产品和价格", async () => {
     newUrls: ["https://www.creem.io/stores/reply-fast"],
     analyses: [{
       url: "https://www.creem.io/stores/reply-fast",
+      slug: "reply-fast",
+      keyword: "reply fast",
       status: 200,
       title: "Reply Fast",
       h1: "Reply Fast",
@@ -43,6 +45,9 @@ test("Creem 新商店通知包含官网、产品和价格", async () => {
 
   try {
     await notifySiteResult("https://example.com/webhook", result);
+    assert.match(sentText, /URL：https:\/\/www\.creem\.io\/stores\/reply-fast/);
+    assert.match(sentText, /slug：reply-fast/);
+    assert.match(sentText, /Keyword：reply fast/);
     assert.match(sentText, /关联官网：https:\/\/replyfast\.example\//);
     assert.match(sentText, /公开产品（1 个）/);
     assert.match(sentText, /Starter：\$9\.00/);

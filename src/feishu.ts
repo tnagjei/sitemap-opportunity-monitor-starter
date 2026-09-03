@@ -6,7 +6,10 @@ const MAX_MESSAGE_CHARS = 15_000;
 
 function formatAnalysis(item: PageAnalysis, index: number): string {
   const lines = [
-    `${index}. ${item.url}`,
+    `${index}.`,
+    `URL：${item.url}`,
+    `slug：${item.slug}`,
+    `Keyword：${item.keyword}`,
     `状态码：${item.status ?? "未知"}`,
   ];
   if (item.title) lines.push(`Title：${item.title}`);

@@ -29,15 +29,19 @@ function normalizeCandidate(value: string): string {
     .toLowerCase();
 }
 
-export function slugKeyword(url: string): string {
+export function urlSlug(url: string): string {
   const parsed = new URL(url);
   const pieces = parsed.pathname.split("/").filter(Boolean);
   const last = pieces.at(-1) ?? "";
   try {
-    return normalizeCandidate(decodeURIComponent(last));
+    return decodeURIComponent(last);
   } catch {
-    return normalizeCandidate(last);
+    return last;
   }
+}
+
+export function slugKeyword(url: string): string {
+  return urlSlug(url).replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
 export function buildKeywordCandidates(
@@ -45,7 +49,7 @@ export function buildKeywordCandidates(
   title: string,
   h1: string,
 ): string[] {
-  const values = [slugKeyword(url), normalizeCandidate(title), normalizeCandidate(h1)];
+  const values = [normalizeCandidate(slugKeyword(url)), normalizeCandidate(title), normalizeCandidate(h1)];
   const seen = new Set<string>();
   const candidates: string[] = [];
 
