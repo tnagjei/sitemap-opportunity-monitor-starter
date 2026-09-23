@@ -1,4 +1,4 @@
-import { parsePositiveInt, parseSites } from "./config";
+import { parsePositiveFloat, parsePositiveInt, parseSites, parseTrendKeywords } from "./config";
 import { enqueueAitdkBatch, processAitdkQueue } from "./aitdk";
 import {
   notifyAitdkBatch,
@@ -7,13 +7,35 @@ import {
   notifyDailyMonitorStarted,
   notifyError,
   notifyNoNewPages,
+  notifySkippedLanguages,
   notifySiteResult,
+  notifyTrendsError,
+  notifyTrendsReport,
 } from "./feishu";
 import { analyzePage } from "./page";
-import { collectPageUrls, filterUrlsByPrefix, findNewUrls } from "./sitemap";
-import type { DailyMonitorQueue, Env, SiteRunResult, Snapshot } from "./types";
+import {
+  evaluateTrendKeyword,
+  fetchNidCookie,
+  fetchTrendSeries,
+  TrendNoDataError,
+  TRENDS_RETRY_DELAY_MS,
+  TRENDS_SPACING_MS,
+} from "./trends";
+import type { TrendKeywordStats } from "./trends";
+import { collectPageUrls, filterUrlsByPrefix, findNewUrls, partitionLanguageUrls } from "./sitemap";
+import type {
+  DailyMonitorQueue,
+  Env,
+  TrendKeywordConfig,
+  SiteRunResult,
+  Snapshot,
+  TrendKeywordEvaluation,
+  TrendsReport,
+  TrendsSnapshot,
+} from "./types";
 
 const DAILY_QUEUE_PREFIX = "monitor:daily:";
+const TRENDS_SNAPSHOT_KEY = "trends:weekly:snapshot";
 const QUEUE_TTL_SECONDS = 8 * 24 * 60 * 60;
 const MAX_SITE_ATTEMPTS = 3;
 
@@ -79,35 +101,91 @@ export async function runMonitor(env: Env, siteIds?: string[]): Promise<Record<s
         continue;
       }
 
+      const {
+        englishUrls,
+        skippedNonEnglishUrls,
+        variantsByUrl,
+        unmatchedNonEnglishUrls,
+        primaryLanguage,
+        isPureMinorityLanguageSite,
+      } = partitionLanguageUrls(newUrls, {
+        targetLang: site.primaryLanguage,
+        allUrls: currentUrls,
+      });
+
+      if (englishUrls.length === 0) {
+        await notifySkippedLanguages(
+          env.FEISHU_WEBHOOK,
+          site.name,
+          site.url,
+          currentUrls.length,
+          skippedNonEnglishUrls,
+        );
+        const snapshot: Snapshot = {
+          sitemapUrl: site.url,
+          scannedAt: new Date().toISOString(),
+          urls: currentUrls,
+        };
+        await env.SNAPSHOTS.put(snapshotKey(site.id), JSON.stringify(snapshot));
+        summary.push({
+          site: site.id,
+          baselineCreated: false,
+          totalUrls: currentUrls.length,
+          newUrls: newUrls.length,
+          remainingUrls: 0,
+          skippedNonEnglishCount: skippedNonEnglishUrls.length,
+        });
+        console.log(JSON.stringify({
+          event: "site_monitor_completed",
+          site: site.id,
+          newUrls: newUrls.length,
+          skippedNonEnglishCount: skippedNonEnglishUrls.length,
+        }));
+        continue;
+      }
+
       const usesAitdk = site.id === "pmkg" || site.id === "creem";
       const aitdkBatch = usesAitdk
-        ? await enqueueAitdkBatch(env.SNAPSHOTS, site.id, newUrls)
+        ? await enqueueAitdkBatch(env.SNAPSHOTS, site.id, englishUrls)
         : undefined;
       if (aitdkBatch) await notifyAitdkBatch(env.FEISHU_WEBHOOK, aitdkBatch);
 
       const analysisLimit = site.id === "pmkg" ? Math.min(maxNewPages, 15) : maxNewPages;
-      const selected = newUrls.slice(0, analysisLimit);
+      const selected = englishUrls.slice(0, analysisLimit);
       const analyses = await analyzeSequentially(selected, site.analyzeLinkedSite);
+
+      for (const analysis of analyses) {
+        const variants = variantsByUrl.get(analysis.url);
+        if (variants && variants.length > 0) {
+          analysis.languageVariants = Array.from(new Set(variants)).sort();
+        }
+      }
+
       const result: SiteRunResult = {
         site,
         baselineCreated: false,
         totalUrls: currentUrls.length,
         newUrls,
         analyses,
-        omittedCount: Math.max(0, newUrls.length - selected.length),
+        omittedCount: Math.max(0, englishUrls.length - selected.length),
+        skippedNonEnglishCount: skippedNonEnglishUrls.length,
+        unmatchedNonEnglishUrls: unmatchedNonEnglishUrls.length > 0 ? unmatchedNonEnglishUrls : undefined,
+        primaryLanguage,
+        isPureMinorityLanguageSite,
       };
 
       // 先通知，后更新快照。通知失败时，下一次仍会重试这些新增网址。
       await notifySiteResult(env.FEISHU_WEBHOOK, result);
 
       const selectedSet = new Set(selected);
+      const skippedSet = new Set(skippedNonEnglishUrls);
       const newSet = new Set(newUrls);
       const snapshot: Snapshot = {
         sitemapUrl: site.url,
         scannedAt: new Date().toISOString(),
         urls: usesAitdk
           ? currentUrls
-          : currentUrls.filter((url) => !newSet.has(url) || selectedSet.has(url)),
+          : currentUrls.filter((url) => !newSet.has(url) || selectedSet.has(url) || skippedSet.has(url)),
       };
       await env.SNAPSHOTS.put(snapshotKey(site.id), JSON.stringify(snapshot));
       summary.push({
@@ -116,9 +194,16 @@ export async function runMonitor(env: Env, siteIds?: string[]): Promise<Record<s
         totalUrls: currentUrls.length,
         newUrls: newUrls.length,
         remainingUrls: result.omittedCount,
+        ...(skippedNonEnglishUrls.length > 0 ? { skippedNonEnglishCount: skippedNonEnglishUrls.length } : {}),
         ...(aitdkBatch ? { aitdkBatch: aitdkBatch.id, aitdkStatus: aitdkBatch.status } : {}),
       });
-      console.log(JSON.stringify({ event: "site_monitor_completed", site: site.id, newUrls: newUrls.length }));
+      console.log(JSON.stringify({
+        event: "site_monitor_completed",
+        site: site.id,
+        newUrls: newUrls.length,
+        englishUrls: englishUrls.length,
+        skippedNonEnglishCount: skippedNonEnglishUrls.length,
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       summary.push({ site: site.id, error: message });
@@ -230,6 +315,107 @@ export async function runNextScheduledJob(env: Env, now = new Date()): Promise<R
     completedSites: queue.completedSiteIds.length,
     failedSites: Object.keys(queue.failedSites).length,
   };
+}
+
+function trendKeywordKey(keyword: string, geo?: string): string {
+  return geo ? `${keyword.toLowerCase()}|${geo.toLowerCase()}` : keyword.toLowerCase();
+}
+
+export async function runTrendsMonitor(env: Env, now = new Date()): Promise<TrendsReport> {
+  try {
+    const thresholds = {
+      noiseFloor: parsePositiveFloat(env.TRENDS_NOISE_FLOOR, 3),
+      doublingFactor: parsePositiveFloat(env.TRENDS_DOUBLING_FACTOR, 2),
+    };
+    const keywordConfigs = parseTrendKeywords(env);
+    const retryDelayMs = parsePositiveInt(env.TRENDS_RETRY_DELAY_MS, TRENDS_RETRY_DELAY_MS);
+    const previous = await env.SNAPSHOTS.get<TrendsSnapshot>(TRENDS_SNAPSHOT_KEY, "json");
+    const baselineCreated = !previous;
+
+    // 先取全部数据再决定通知内容。取数失败（限流、网络）整体失败并保留旧快照；
+    // 但 Google 明确表示"查不到数据"的词只跳过，否则一个长尾词会让整周监控永远失败。
+    const cookie = await fetchNidCookie().catch(() => "");
+    const stats: TrendKeywordStats[] = [];
+    const noData: TrendKeywordConfig[] = [];
+    for (const [index, config] of keywordConfigs.entries()) {
+      if (index > 0) await new Promise((resolve) => setTimeout(resolve, TRENDS_SPACING_MS));
+      try {
+        const series = await fetchTrendSeries(config.keyword, config.geo, cookie, retryDelayMs);
+        stats.push(evaluateTrendKeyword(config, series, thresholds));
+      } catch (error) {
+        if (error instanceof TrendNoDataError) {
+          noData.push(config);
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    const previousKeywords = previous?.keywords ?? {};
+    const doubled: TrendKeywordEvaluation[] = [];
+    const baselines: TrendKeywordEvaluation[] = [];
+    const unchanged: TrendKeywordEvaluation[] = [];
+    const snapshot: TrendsSnapshot = { scannedAt: now.toISOString(), keywords: {} };
+
+    for (const item of stats) {
+      const key = trendKeywordKey(item.keyword, item.geo);
+      snapshot.keywords[key] = { last7Mean: item.last7Mean, prev7Mean: item.prev7Mean };
+      const evaluation: TrendKeywordEvaluation = {
+        keyword: item.keyword,
+        geo: item.geo,
+        last7Mean: item.last7Mean,
+        prev7Mean: item.prev7Mean,
+        multiple: item.multiple,
+        status: "unchanged",
+      };
+      if (!(key in previousKeywords)) {
+        evaluation.status = "baseline";
+        baselines.push(evaluation);
+      } else if (item.status === "doubled") {
+        evaluation.status = "doubled";
+        doubled.push(evaluation);
+      } else {
+        unchanged.push(evaluation);
+      }
+    }
+
+    const report: TrendsReport = {
+      ranAt: now.toISOString(),
+      baselineCreated,
+      keywordCount: keywordConfigs.length,
+      doubled,
+      baselines,
+      unchanged,
+      noData,
+    };
+
+    // 先通知后写快照：通知失败时快照保持不变，下次运行会重试同一批词。
+    await notifyTrendsReport(env.FEISHU_WEBHOOK, report);
+    await env.SNAPSHOTS.put(TRENDS_SNAPSHOT_KEY, JSON.stringify(snapshot));
+    console.log(JSON.stringify({
+      event: "trends_monitor_completed",
+      baselineCreated,
+      doubled: doubled.length,
+      noData: noData.length,
+    }));
+    return report;
+  } catch (error) {
+    await notifyTrendsError(env.FEISHU_WEBHOOK, error);
+    console.error(JSON.stringify({
+      event: "trends_monitor_failed",
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    return {
+      ranAt: now.toISOString(),
+      baselineCreated: false,
+      keywordCount: 0,
+      doubled: [],
+      baselines: [],
+      unchanged: [],
+      noData: [],
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 }
 
 export async function runAitdkMonitor(env: Env): Promise<Record<string, unknown>> {

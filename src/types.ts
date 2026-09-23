@@ -8,6 +8,10 @@ export interface Env {
   MAX_NEW_PAGES?: string;
   MAX_SITEMAPS_PER_SITE?: string;
   MONITORED_SITEMAPS: string;
+  TRENDS_KEYWORDS: string;
+  TRENDS_NOISE_FLOOR?: string;
+  TRENDS_DOUBLING_FACTOR?: string;
+  TRENDS_RETRY_DELAY_MS?: string;
 }
 
 export interface MonitoredSite {
@@ -16,6 +20,7 @@ export interface MonitoredSite {
   url: string;
   pathPrefix?: string;
   analyzeLinkedSite?: boolean;
+  primaryLanguage?: string;
 }
 
 export interface Snapshot {
@@ -47,6 +52,7 @@ export interface PageAnalysis {
   keywords: string[];
   external?: ExternalPageAnalysis;
   products?: StoreProduct[];
+  languageVariants?: string[];
   error?: string;
 }
 
@@ -65,6 +71,42 @@ export interface ExternalPageAnalysis {
   error?: string;
 }
 
+export interface TrendKeywordConfig {
+  keyword: string;
+  geo?: string;
+}
+
+export interface TrendKeywordBaseline {
+  last7Mean: number;
+  prev7Mean: number;
+}
+
+export interface TrendsSnapshot {
+  scannedAt: string;
+  keywords: Record<string, TrendKeywordBaseline>;
+}
+
+export interface TrendKeywordEvaluation {
+  keyword: string;
+  geo?: string;
+  last7Mean: number;
+  prev7Mean: number;
+  multiple: number | null;
+  status: "doubled" | "baseline" | "unchanged";
+}
+
+export interface TrendsReport {
+  ranAt: string;
+  baselineCreated: boolean;
+  keywordCount: number;
+  doubled: TrendKeywordEvaluation[];
+  baselines: TrendKeywordEvaluation[];
+  unchanged: TrendKeywordEvaluation[];
+  /** Google 查不到任何数据的词，本期跳过，不影响其它词。 */
+  noData: TrendKeywordConfig[];
+  error?: string;
+}
+
 export interface SiteRunResult {
   site: MonitoredSite;
   baselineCreated: boolean;
@@ -72,4 +114,8 @@ export interface SiteRunResult {
   newUrls: string[];
   analyses: PageAnalysis[];
   omittedCount: number;
+  skippedNonEnglishCount?: number;
+  unmatchedNonEnglishUrls?: string[];
+  primaryLanguage?: string;
+  isPureMinorityLanguageSite?: boolean;
 }

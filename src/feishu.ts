@@ -1,6 +1,7 @@
 import { googleTrendsUrl } from "./keywords";
+import { getLanguageName } from "./sitemap";
 import type { AitdkBatch, AitdkQueueSummary } from "./aitdk";
-import type { PageAnalysis, SiteRunResult } from "./types";
+import type { PageAnalysis, SiteRunResult, TrendKeywordEvaluation, TrendsReport } from "./types";
 
 const MAX_MESSAGE_CHARS = 15_000;
 
@@ -16,6 +17,9 @@ function formatAnalysis(item: PageAnalysis, index: number): string {
   if (item.h1) lines.push(`H1：${item.h1}`);
   if (item.description) lines.push(`Description：${item.description.slice(0, 240)}`);
   if (item.error) lines.push(`异常：${item.error}`);
+  if (item.languageVariants?.length) {
+    lines.push(`其他语言：已跳过 ${item.languageVariants.length} 个语言版本（${item.languageVariants.join("、")}）`);
+  }
   if (item.external) {
     lines.push(`关联官网：${item.external.url}`);
     lines.push(`关联官网状态码：${item.external.status ?? "未知"}`);
@@ -47,12 +51,19 @@ function formatAnalysis(item: PageAnalysis, index: number): string {
 }
 
 function buildMessages(result: SiteRunResult): string[] {
+  const langTag = result.isPureMinorityLanguageSite && result.primaryLanguage
+    ? `（纯${getLanguageName(result.primaryLanguage)}站点）`
+    : "";
+  const langLabel = result.primaryLanguage && result.primaryLanguage !== "en" && result.primaryLanguage !== "all"
+    ? `${getLanguageName(result.primaryLanguage)}页面`
+    : "英文页面";
   const header = [
-    `【${result.site.name} Sitemap 新页面】`,
+    `【${result.site.name} Sitemap 新页面${langTag}】`,
     `Sitemap：${result.site.url}`,
     `当前页面总数：${result.totalUrls}`,
-    `新增页面：${result.newUrls.length}`,
+    `新增页面：${result.analyses.length} 个${langLabel}${result.skippedNonEnglishCount ? `（另有 ${result.skippedNonEnglishCount} 个多语言版本已跳过采集）` : ""}`,
     result.omittedCount > 0 ? `本次仅分析前 ${result.analyses.length} 个，另有 ${result.omittedCount} 个未展开。` : "",
+    result.unmatchedNonEnglishUrls?.length ? `另有 ${result.unmatchedNonEnglishUrls.length} 个独立非英文页面已跳过采集。` : "",
     "",
   ]
     .filter(Boolean)
@@ -102,6 +113,27 @@ export async function notifySiteResult(webhook: string, result: SiteRunResult): 
   for (const message of buildMessages(result)) {
     await sendText(webhook, message);
   }
+}
+
+export async function notifySkippedLanguages(
+  webhook: string,
+  siteName: string,
+  siteUrl: string,
+  totalUrls: number,
+  skippedUrls: string[],
+): Promise<void> {
+  const shown = skippedUrls.slice(0, 10);
+  const lines = [
+    `【${siteName} Sitemap 监控】`,
+    `Sitemap：${siteUrl}`,
+    `当前页面总数：${totalUrls}`,
+    `今日新增 ${skippedUrls.length} 个页面均为非英文多语言版本，已跳过单独采集：`,
+    ...shown.map((url) => `• ${url}`),
+  ];
+  if (skippedUrls.length > shown.length) {
+    lines.push(`另有 ${skippedUrls.length - shown.length} 个多语言页面未展开。`);
+  }
+  await sendText(webhook, lines.join("\n"));
 }
 
 export async function notifyNoNewPages(
@@ -213,6 +245,66 @@ export async function notifyAitdkResults(webhook: string, summary: AitdkQueueSum
     if (result.costCredits !== undefined) lines.push(`本次消耗：${result.costCredits} 积分`);
   }
   await sendText(webhook, lines.join("\n"));
+}
+
+function formatMultiple(multiple: number | null): string {
+  return multiple === null ? "未知倍数" : `${multiple.toFixed(1)} 倍`;
+}
+
+export async function notifyTrendsReport(webhook: string, report: TrendsReport): Promise<void> {
+  const noDataNote =
+    report.noData.length > 0
+      ? `\n\nGoogle 查不到数据、已跳过 ${report.noData.length} 个：${report.noData.map((item) => item.keyword).join("、")}`
+      : "";
+  if (report.baselineCreated) {
+    await sendText(
+      webhook,
+      [
+        "【Google Trends 周监控基线】",
+        `日期：${report.ranAt.slice(0, 10)}`,
+        `已记录 ${report.keywordCount - report.noData.length} 个关键词的上周数据，下周开始检测翻倍。${noDataNote}`,
+      ].join("\n"),
+    );
+    return;
+  }
+
+  if (report.doubled.length === 0 && report.baselines.length === 0) {
+    await sendText(
+      webhook,
+      `【Google Trends 周监控】\n日期：${report.ranAt.slice(0, 10)}\n${report.keywordCount - report.noData.length} 个关键词均未翻倍。${noDataNote}`,
+    );
+    return;
+  }
+
+  const lines = [
+    "【Google Trends 翻倍告警】",
+    `日期：${report.ranAt.slice(0, 10)}`,
+    `共 ${report.keywordCount} 个关键词，其中 ${report.doubled.length} 个翻倍。`,
+    "",
+  ];
+  for (const item of report.doubled) {
+    const geoSuffix = item.geo ? `（geo=${item.geo}）` : "";
+    lines.push(
+      `• ${item.keyword}${geoSuffix}：近 7 天均值 ${item.last7Mean.toFixed(1)}，为上周均值 ${item.prev7Mean.toFixed(1)} 的 ${formatMultiple(item.multiple)}`,
+    );
+    lines.push(`  趋势：${googleTrendsUrl(item.keyword)}`);
+  }
+  if (report.baselines.length > 0) {
+    lines.push("", "新词基线（下周开始检测）：");
+    for (const item of report.baselines) {
+      lines.push(`• ${item.keyword}${item.geo ? `（geo=${item.geo}）` : ""}：近 7 天均值 ${item.last7Mean.toFixed(1)}`);
+    }
+  }
+  if (report.unchanged.length > 0) {
+    lines.push("", `未翻倍 ${report.unchanged.length} 个：${report.unchanged.map((item) => item.keyword).join("、")}`);
+  }
+  lines.push(noDataNote);
+  await sendText(webhook, lines.join("\n"));
+}
+
+export async function notifyTrendsError(webhook: string, error: unknown): Promise<void> {
+  const message = error instanceof Error ? error.message : String(error);
+  await sendText(webhook, `【Google Trends 周监控失败】\n错误：${message.slice(0, 2000)}`);
 }
 
 export async function notifyError(webhook: string, siteName: string, error: unknown): Promise<void> {

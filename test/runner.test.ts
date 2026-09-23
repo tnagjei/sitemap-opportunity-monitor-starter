@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { runMonitor, runNextScheduledJob, startDailyMonitor } from "../src/runner";
+import { runMonitor, runNextScheduledJob, runTrendsMonitor, startDailyMonitor } from "../src/runner";
 import type { Env } from "../src/types";
 
 test("每日任务创建一次队列并立即发送开始通知", async () => {
@@ -359,3 +359,204 @@ test("Creem 新商店全部进入 AITDK 批次并写入快照", async () => {
     globalThis.fetch = originalFetch;
   }
 });
+
+
+test("多语言新增只采集英文并提醒跳过的语言，快照同时记录全部已处理变体", async () => {
+  const originalFetch = globalThis.fetch;
+  const fetchedPages: string[] = [];
+  const notifications: string[] = [];
+  let savedSnapshot = "";
+
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "https://imagy.test/sitemap.xml") {
+      return new Response(
+        "<urlset>" +
+          [
+            "https://imagy.test/old-page",
+            "https://imagy.test/ai-camera-angle-changer/",
+            "https://imagy.test/pt/ai-camera-angle-changer/",
+            "https://imagy.test/de/ai-camera-angle-changer/",
+          ].map((loc) => "<url><loc>" + loc + "</loc></url>").join("") +
+          "</urlset>",
+      );
+    }
+    if (url === "https://example.com/webhook") {
+      notifications.push(JSON.parse(String(init?.body)).content.text);
+      return Response.json({ code: 0 });
+    }
+    fetchedPages.push(url);
+    return new Response(
+      "<html><head><title>AI Camera Angle</title></head><body><h1>Camera Angle Tool</h1></body></html>",
+      { headers: { "content-type": "text/html" } },
+    );
+  };
+
+  const env = {
+    SNAPSHOTS: {
+      get: async () => ({
+        sitemapUrl: "https://imagy.test/sitemap.xml",
+        scannedAt: "2026-09-20T00:00:00.000Z",
+        urls: ["https://imagy.test/old-page"],
+      }),
+      put: async (_key: string, value: string) => {
+        savedSnapshot = value;
+      },
+    },
+    FEISHU_WEBHOOK: "https://example.com/webhook",
+    MONITORED_SITEMAPS: JSON.stringify([
+      { id: "imagy", name: "Imagy", url: "https://imagy.test/sitemap.xml" },
+    ]),
+  } as unknown as Env;
+
+  try {
+    await runMonitor(env);
+    assert.deepEqual(fetchedPages, ["https://imagy.test/ai-camera-angle-changer/"]);
+    assert.equal(notifications.length, 1);
+    assert.match(notifications[0] ?? "", /新增页面：1 个英文页面（另有 2 个多语言版本已跳过采集）/);
+    assert.match(notifications[0] ?? "", /其他语言：已跳过 2 个语言版本（de、pt）/);
+    assert.match(notifications[0] ?? "", /URL：https:\/\/imagy\.test\/ai-camera-angle-changer\//);
+    const snapshotUrls = JSON.parse(savedSnapshot).urls.sort();
+    assert.deepEqual(snapshotUrls, [
+      "https://imagy.test/ai-camera-angle-changer/",
+      "https://imagy.test/de/ai-camera-angle-changer/",
+      "https://imagy.test/old-page",
+      "https://imagy.test/pt/ai-camera-angle-changer/",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("全为非英文多语言新增时发送跳过提醒并写入快照", async () => {
+  const originalFetch = globalThis.fetch;
+  const fetchedPages: string[] = [];
+  const notifications: string[] = [];
+  let savedSnapshot = "";
+
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "https://imagy.test/sitemap.xml") {
+      return new Response(
+        "<urlset>" +
+          [
+            "https://imagy.test/old-page",
+            "https://imagy.test/pt/standalone-tool/",
+            "https://imagy.test/de/standalone-tool/",
+          ].map((loc) => "<url><loc>" + loc + "</loc></url>").join("") +
+          "</urlset>",
+      );
+    }
+    if (url === "https://example.com/webhook") {
+      notifications.push(JSON.parse(String(init?.body)).content.text);
+      return Response.json({ code: 0 });
+    }
+    fetchedPages.push(url);
+    return new Response("<html></html>", { headers: { "content-type": "text/html" } });
+  };
+
+  const env = {
+    SNAPSHOTS: {
+      get: async () => ({
+        sitemapUrl: "https://imagy.test/sitemap.xml",
+        scannedAt: "2026-09-20T00:00:00.000Z",
+        urls: ["https://imagy.test/old-page"],
+      }),
+      put: async (_key: string, value: string) => {
+        savedSnapshot = value;
+      },
+    },
+    FEISHU_WEBHOOK: "https://example.com/webhook",
+    MONITORED_SITEMAPS: JSON.stringify([
+      { id: "imagy", name: "Imagy", url: "https://imagy.test/sitemap.xml" },
+    ]),
+  } as unknown as Env;
+
+  try {
+    await runMonitor(env);
+    assert.deepEqual(fetchedPages, []);
+    assert.equal(notifications.length, 1);
+    assert.match(notifications[0] ?? "", /均为非英文多语言版本，已跳过单独采集/);
+    assert.match(notifications[0] ?? "", /https:\/\/imagy\.test\/pt\/standalone-tool\//);
+    const snapshotUrls = JSON.parse(savedSnapshot).urls.sort();
+    assert.deepEqual(snapshotUrls, [
+      "https://imagy.test/de/standalone-tool/",
+      "https://imagy.test/old-page",
+      "https://imagy.test/pt/standalone-tool/",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+
+
+test("纯小语种站点自动识别主语种并正常采集，次要语言跳过提醒", async () => {
+  const originalFetch = globalThis.fetch;
+  const fetchedPages: string[] = [];
+  const notifications: string[] = [];
+  let savedSnapshot = "";
+
+  globalThis.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    if (url === "https://german.test/sitemap.xml") {
+      return new Response(
+        "<urlset>" +
+          [
+            "https://german.test/de/tool-old",
+            "https://german.test/de/tool-new",
+            "https://german.test/fr/tool-new",
+          ].map((loc) => "<url><loc>" + loc + "</loc></url>").join("") +
+          "</urlset>",
+      );
+    }
+    if (url === "https://example.com/webhook") {
+      notifications.push(JSON.parse(String(init?.body)).content.text);
+      return Response.json({ code: 0 });
+    }
+    fetchedPages.push(url);
+    return new Response(
+      "<html><head><title>Deutsches Werkzeug</title></head><body><h1>Werkzeug</h1></body></html>",
+      { headers: { "content-type": "text/html" } },
+    );
+  };
+
+  const env = {
+    SNAPSHOTS: {
+      get: async () => ({
+        sitemapUrl: "https://german.test/sitemap.xml",
+        scannedAt: "2026-09-20T00:00:00.000Z",
+        urls: ["https://german.test/de/tool-old"],
+      }),
+      put: async (_key: string, value: string) => {
+        savedSnapshot = value;
+      },
+    },
+    FEISHU_WEBHOOK: "https://example.com/webhook",
+    MONITORED_SITEMAPS: JSON.stringify([
+      { id: "german-site", name: "GermanTools", url: "https://german.test/sitemap.xml" },
+    ]),
+  } as unknown as Env;
+
+  try {
+    await runMonitor(env);
+    // 1. 自动识别德语为主语种：只抓取德语页面，不抓法语
+    assert.deepEqual(fetchedPages, ["https://german.test/de/tool-new"]);
+
+    // 2. 飞书通知包含纯德语站点标识以及法语跳过提醒
+    assert.equal(notifications.length, 1);
+    assert.match(notifications[0] ?? "", /【GermanTools Sitemap 新页面（纯德语站点）】/);
+    assert.match(notifications[0] ?? "", /其他语言：已跳过 1 个语言版本（fr）/);
+
+    // 3. 快照保存德语新页面与跳过的法语页面
+    const snapshotUrls = JSON.parse(savedSnapshot).urls.sort();
+    assert.deepEqual(snapshotUrls, [
+      "https://german.test/de/tool-new",
+      "https://german.test/de/tool-old",
+      "https://german.test/fr/tool-new",
+    ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+

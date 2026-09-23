@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { collectPageUrls, findNewUrls, filterUrlsByPrefix, parseSitemapXml } from "../src/sitemap";
+import { collectPageUrls, findNewUrls, filterUrlsByPrefix, parseSitemapXml, extractUrlLanguage, parseLangPrefix, partitionLanguageUrls } from "../src/sitemap";
 
 const INDEX_XML = `<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><sitemap><loc>https://a.com/one.xml</loc></sitemap><sitemap><loc>https://a.com/bad.xml</loc></sitemap></sitemapindex>`;
 const URLSET_XML = `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"><url><loc>https://a.com/page</loc></url></urlset>`;
@@ -106,3 +106,89 @@ test("根 Sitemap 无法解析时仍然抛错", async () => {
     restoreFetch();
   }
 });
+
+test("解析多语言路径与英文归一化", () => {
+  assert.equal(parseLangPrefix("pt")?.isEnglish, false);
+  assert.equal(parseLangPrefix("pt")?.lang, "pt");
+  assert.equal(parseLangPrefix("de")?.isEnglish, false);
+  assert.equal(parseLangPrefix("en")?.isEnglish, true);
+  assert.equal(parseLangPrefix("en-US")?.isEnglish, true);
+  assert.equal(parseLangPrefix("blog"), null);
+  assert.equal(parseLangPrefix("square-crop"), null);
+
+  const ptInfo = extractUrlLanguage("https://imagy.app/pt/ai-camera-angle-changer/");
+  assert.equal(ptInfo.isNonEnglish, true);
+  assert.equal(ptInfo.lang, "pt");
+  assert.equal(ptInfo.normalizedKey, "https://imagy.app/ai-camera-angle-changer");
+
+  const enInfo = extractUrlLanguage("https://imagy.app/ai-camera-angle-changer/");
+  assert.equal(enInfo.isNonEnglish, false);
+  assert.equal(enInfo.normalizedKey, "https://imagy.app/ai-camera-angle-changer");
+
+  const enPrefixedInfo = extractUrlLanguage("https://imagy.app/en/ai-camera-angle-changer/");
+  assert.equal(enPrefixedInfo.isNonEnglish, false);
+  assert.equal(enPrefixedInfo.normalizedKey, "https://imagy.app/ai-camera-angle-changer");
+});
+
+test("partitionLanguageUrls 只保留英文并将非英文归并在对应英文页面上", () => {
+  const urls = [
+    "https://imagy.app/ai-camera-angle-changer/",
+    "https://imagy.app/pt/ai-camera-angle-changer/",
+    "https://imagy.app/de/ai-camera-angle-changer/",
+    "https://imagy.app/es/ai-camera-angle-changer/",
+    "https://imagy.app/other-tool/",
+    "https://imagy.app/fr/unmatched-tool/",
+  ];
+  const result = partitionLanguageUrls(urls);
+
+  assert.deepEqual(result.englishUrls, [
+    "https://imagy.app/ai-camera-angle-changer/",
+    "https://imagy.app/other-tool/",
+  ]);
+  assert.deepEqual(result.skippedNonEnglishUrls, [
+    "https://imagy.app/pt/ai-camera-angle-changer/",
+    "https://imagy.app/de/ai-camera-angle-changer/",
+    "https://imagy.app/es/ai-camera-angle-changer/",
+    "https://imagy.app/fr/unmatched-tool/",
+  ]);
+  assert.deepEqual(
+    result.variantsByUrl.get("https://imagy.app/ai-camera-angle-changer/"),
+    ["pt", "de", "es"],
+  );
+  assert.deepEqual(result.unmatchedNonEnglishUrls, [
+    "https://imagy.app/fr/unmatched-tool/",
+  ]);
+});
+
+
+test("纯小语种站点自动识别主语种与显式配置支持", () => {
+  // 1. 自动识别纯德语站点
+  const germanSiteAllUrls = [
+    "https://example.de/de/tool-1",
+    "https://example.de/de/tool-2",
+    "https://example.de/fr/tool-2",
+  ];
+  const newUrls = [
+    "https://example.de/de/tool-3",
+    "https://example.de/fr/tool-3",
+  ];
+  const resAuto = partitionLanguageUrls(newUrls, { allUrls: germanSiteAllUrls });
+  assert.equal(resAuto.isPureMinorityLanguageSite, true);
+  assert.equal(resAuto.primaryLanguage, "de");
+  assert.deepEqual(resAuto.englishUrls, ["https://example.de/de/tool-3"]);
+  assert.deepEqual(resAuto.skippedNonEnglishUrls, ["https://example.de/fr/tool-3"]);
+  assert.deepEqual(resAuto.variantsByUrl.get("https://example.de/de/tool-3"), ["fr"]);
+
+  // 2. 显式配置 targetLang 为 all
+  const resAll = partitionLanguageUrls(newUrls, { targetLang: "all" });
+  assert.equal(resAll.primaryLanguage, "all");
+  assert.deepEqual(resAll.englishUrls, newUrls);
+  assert.equal(resAll.skippedNonEnglishUrls.length, 0);
+
+  // 3. 显式配置 targetLang 为指定小语种
+  const resExplicit = partitionLanguageUrls(newUrls, { targetLang: "fr" });
+  assert.equal(resExplicit.primaryLanguage, "fr");
+  assert.deepEqual(resExplicit.englishUrls, ["https://example.de/fr/tool-3"]);
+  assert.deepEqual(resExplicit.skippedNonEnglishUrls, ["https://example.de/de/tool-3"]);
+});
+
