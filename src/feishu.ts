@@ -8,6 +8,7 @@ const MAX_MESSAGE_CHARS = 15_000;
 function formatAnalysis(item: PageAnalysis, index: number): string {
   const lines = [
     `${index}.`,
+    ...(item.focus ? ["★ 重点页面"] : []),
     `URL：${item.url}`,
     `slug：${item.slug}`,
     `Keyword：${item.keyword}`,
@@ -64,6 +65,9 @@ function buildMessages(result: SiteRunResult): string[] {
     `新增页面：${result.analyses.length} 个${langLabel}${result.skippedNonEnglishCount ? `（另有 ${result.skippedNonEnglishCount} 个多语言版本已跳过采集）` : ""}`,
     result.omittedCount > 0 ? `本次仅分析前 ${result.analyses.length} 个，另有 ${result.omittedCount} 个未展开。` : "",
     result.unmatchedNonEnglishUrls?.length ? `另有 ${result.unmatchedNonEnglishUrls.length} 个独立非英文页面已跳过采集。` : "",
+    result.analyses.some((item) => item.focus)
+      ? `重点目录：${result.site.focusPathPrefix}（标记 ★ 的为重点页面）`
+      : "",
     "",
   ]
     .filter(Boolean)

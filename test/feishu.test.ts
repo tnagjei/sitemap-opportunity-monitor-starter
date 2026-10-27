@@ -56,6 +56,64 @@ test("Creem 新商店通知包含官网、产品和价格", async () => {
   }
 });
 
+test("重点目录页面在通知里带 ★ 标记", async () => {
+  const originalFetch = globalThis.fetch;
+  let sentText = "";
+  globalThis.fetch = async (_input: RequestInfo | URL, init?: RequestInit) => {
+    sentText = JSON.parse(String(init?.body)).content.text;
+    return Response.json({ code: 0 });
+  };
+
+  const result = {
+    site: {
+      id: "aivideotrend",
+      name: "AIVideoTrend",
+      url: "https://aivideotrend.net/sitemap.xml",
+      focusPathPrefix: "https://aivideotrend.net/effects/",
+      primaryLanguage: "en",
+    },
+    baselineCreated: false,
+    totalUrls: 46,
+    newUrls: [
+      "https://aivideotrend.net/effects/window-peeper-ai-video-generator",
+      "https://aivideotrend.net/guides/something",
+    ],
+    analyses: [
+      {
+        url: "https://aivideotrend.net/effects/window-peeper-ai-video-generator",
+        slug: "window-peeper-ai-video-generator",
+        keyword: "window peeper ai video generator",
+        focus: true,
+        status: 200,
+        title: "Window Peeper",
+        h1: "Window Peeper",
+        description: "",
+        keywords: [],
+      },
+      {
+        url: "https://aivideotrend.net/guides/something",
+        slug: "something",
+        keyword: "something",
+        status: 200,
+        title: "Guide",
+        h1: "Guide",
+        description: "",
+        keywords: [],
+      },
+    ],
+    omittedCount: 0,
+  } satisfies SiteRunResult;
+
+  try {
+    await notifySiteResult("https://example.com/webhook", result);
+    assert.match(sentText, /★ 重点页面\nURL：https:\/\/aivideotrend\.net\/effects\/window-peeper/);
+    assert.match(sentText, /重点目录：https:\/\/aivideotrend\.net\/effects\//);
+    assert.doesNotMatch(sentText, /★ 重点页面\nURL：https:\/\/aivideotrend\.net\/guides/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("AITDK 通知列出 TabAPI 国家、趋势、来源和关键词", async () => {
   const originalFetch = globalThis.fetch;
   let sentText = "";

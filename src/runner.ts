@@ -159,6 +159,9 @@ export async function runMonitor(env: Env, siteIds?: string[]): Promise<Record<s
         if (variants && variants.length > 0) {
           analysis.languageVariants = Array.from(new Set(variants)).sort();
         }
+        if (site.focusPathPrefix && analysis.url.startsWith(site.focusPathPrefix)) {
+          analysis.focus = true;
+        }
       }
 
       const result: SiteRunResult = {

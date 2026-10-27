@@ -32,6 +32,7 @@ export function parseSites(env: Env): MonitoredSite[] {
     const name = String(candidate.name ?? "").trim();
     const url = String(candidate.url ?? "").trim();
     const pathPrefix = String(candidate.pathPrefix ?? "").trim() || undefined;
+    const focusPathPrefix = String(candidate.focusPathPrefix ?? "").trim() || undefined;
     const analyzeLinkedSite = candidate.analyzeLinkedSite === true;
     const primaryLanguage = candidate.primaryLanguage
       ? String(candidate.primaryLanguage).trim().toLowerCase()
@@ -59,7 +60,10 @@ export function parseSites(env: Env): MonitoredSite[] {
         throw new Error(`监控对象 ${id} 的 pathPrefix 必须是 HTTP 或 HTTPS`);
       }
     }
-    return { id, name, url: parsedUrl.toString(), pathPrefix, analyzeLinkedSite, primaryLanguage };
+    if (focusPathPrefix && !/^https?:\/\//.test(focusPathPrefix)) {
+      throw new Error(`监控对象 ${id} 的 focusPathPrefix 必须是 HTTP 或 HTTPS`);
+    }
+    return { id, name, url: parsedUrl.toString(), pathPrefix, focusPathPrefix, analyzeLinkedSite, primaryLanguage };
   });
 }
 

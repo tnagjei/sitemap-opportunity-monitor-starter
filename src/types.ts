@@ -19,6 +19,8 @@ export interface MonitoredSite {
   name: string;
   url: string;
   pathPrefix?: string;
+  /** 重点目录，命中的页面在通知里单独标出。 */
+  focusPathPrefix?: string;
   analyzeLinkedSite?: boolean;
   primaryLanguage?: string;
 }
@@ -45,6 +47,7 @@ export interface PageAnalysis {
   url: string;
   slug: string;
   keyword: string;
+  focus?: boolean;
   status: number | null;
   title: string;
   h1: string;
