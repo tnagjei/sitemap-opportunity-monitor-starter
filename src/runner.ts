@@ -13,6 +13,7 @@ import {
   notifyTrendsReport,
 } from "./feishu";
 import { analyzePage } from "./page";
+import { saveSiteReport } from "./report";
 import {
   evaluateTrendKeyword,
   fetchNidCookie,
@@ -70,7 +71,7 @@ export async function runMonitor(env: Env, siteIds?: string[]): Promise<Record<s
   const maxSitemaps = parsePositiveInt(env.MAX_SITEMAPS_PER_SITE, 50);
   const summary: Record<string, unknown>[] = [];
 
-  for (const site of sites) {
+  for (const [siteIndex, site] of sites.entries()) {
     try {
       const collectedUrls = await collectPageUrls(site.url, maxSitemaps);
       const currentUrls = site.pathPrefix ? filterUrlsByPrefix(collectedUrls, site.pathPrefix) : collectedUrls;
@@ -78,6 +79,14 @@ export async function runMonitor(env: Env, siteIds?: string[]): Promise<Record<s
 
       if (!previous) {
         await notifyNoNewPages(env.FEISHU_WEBHOOK, site.name, site.url, currentUrls.length);
+        await saveSiteReport(env.SNAPSHOTS, site, {
+          order: siteIndex,
+          date: chinaDate(new Date()),
+          totalUrls: currentUrls.length,
+          analyses: [],
+          omittedCount: 0,
+          skippedNonEnglishCount: 0,
+        });
         const baseline: Snapshot = {
           sitemapUrl: site.url,
           scannedAt: new Date().toISOString(),
@@ -91,6 +100,14 @@ export async function runMonitor(env: Env, siteIds?: string[]): Promise<Record<s
       const newUrls = findNewUrls(currentUrls, previous.urls);
       if (newUrls.length === 0) {
         await notifyNoNewPages(env.FEISHU_WEBHOOK, site.name, site.url, currentUrls.length);
+        await saveSiteReport(env.SNAPSHOTS, site, {
+          order: siteIndex,
+          date: chinaDate(new Date()),
+          totalUrls: currentUrls.length,
+          analyses: [],
+          omittedCount: 0,
+          skippedNonEnglishCount: 0,
+        });
         const snapshot: Snapshot = {
           sitemapUrl: site.url,
           scannedAt: new Date().toISOString(),
@@ -121,6 +138,14 @@ export async function runMonitor(env: Env, siteIds?: string[]): Promise<Record<s
           currentUrls.length,
           skippedNonEnglishUrls,
         );
+        await saveSiteReport(env.SNAPSHOTS, site, {
+          order: siteIndex,
+          date: chinaDate(new Date()),
+          totalUrls: currentUrls.length,
+          analyses: [],
+          omittedCount: 0,
+          skippedNonEnglishCount: skippedNonEnglishUrls.length,
+        });
         const snapshot: Snapshot = {
           sitemapUrl: site.url,
           scannedAt: new Date().toISOString(),
@@ -179,6 +204,14 @@ export async function runMonitor(env: Env, siteIds?: string[]): Promise<Record<s
 
       // 先通知，后更新快照。通知失败时，下一次仍会重试这些新增网址。
       await notifySiteResult(env.FEISHU_WEBHOOK, result);
+      await saveSiteReport(env.SNAPSHOTS, site, {
+        order: siteIndex,
+        date: chinaDate(new Date()),
+        totalUrls: currentUrls.length,
+        analyses: result.analyses,
+        omittedCount: result.omittedCount,
+        skippedNonEnglishCount: skippedNonEnglishUrls.length,
+      });
 
       const selectedSet = new Set(selected);
       const skippedSet = new Set(skippedNonEnglishUrls);
@@ -209,6 +242,15 @@ export async function runMonitor(env: Env, siteIds?: string[]): Promise<Record<s
       }));
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
+      await saveSiteReport(env.SNAPSHOTS, site, {
+        order: siteIndex,
+        date: chinaDate(new Date()),
+        totalUrls: 0,
+        analyses: [],
+        omittedCount: 0,
+        skippedNonEnglishCount: 0,
+        error: message,
+      }).catch(() => undefined);
       summary.push({ site: site.id, error: message });
       console.error(JSON.stringify({ event: "site_monitor_failed", site: site.id, error: message }));
       try {

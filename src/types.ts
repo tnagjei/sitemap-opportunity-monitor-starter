@@ -122,3 +122,18 @@ export interface SiteRunResult {
   primaryLanguage?: string;
   isPureMinorityLanguageSite?: boolean;
 }
+
+export interface SiteReport {
+  siteId: string;
+  siteName: string;
+  siteUrl: string;
+  order: number;
+  date: string;
+  scannedAt: string;
+  totalUrls: number;
+  analyses: PageAnalysis[];
+  omittedCount: number;
+  skippedNonEnglishCount: number;
+  focusPathPrefix?: string;
+  error?: string;
+}

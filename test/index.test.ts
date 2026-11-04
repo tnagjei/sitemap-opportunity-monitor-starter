@@ -1,8 +1,31 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import worker from "../src/index";
+import worker, { runWeeklyTrendsMonitor, scheduledJobAt } from "../src/index";
 import { createAitdkBatch } from "../src/aitdk";
 import type { Env } from "../src/types";
+
+test("合并后的 Cron 按预定 UTC 时间分流", () => {
+  assert.equal(scheduledJobAt(new Date("2026-08-24T21:00:34.000Z")), "daily");
+  assert.equal(scheduledJobAt(new Date("2026-08-24T13:03:17.000Z")), "trends");
+  assert.equal(scheduledJobAt(new Date("2026-08-24T13:05:00.000Z")), "site-monitor");
+  assert.equal(scheduledJobAt(new Date("2026-08-25T13:00:00.000Z")), "site-monitor");
+});
+
+test("每周趋势任务同一天成功后不重复执行", async () => {
+  const env = {
+    SNAPSHOTS: {
+      get: async () => "2026-08-24",
+      put: async () => {
+        throw new Error("不应写入");
+      },
+    },
+  } as unknown as Env;
+
+  assert.deepEqual(
+    await runWeeklyTrendsMonitor(env, new Date("2026-08-24T13:00:00.000Z")),
+    { skipped: true, week: "2026-08-24" },
+  );
+});
 
 test("受保护的 /run 只创建每日队列，不直接扫描全部站点", async (t) => {
   const requests: string[] = [];

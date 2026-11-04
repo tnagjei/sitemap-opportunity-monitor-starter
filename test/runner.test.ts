@@ -163,8 +163,8 @@ test("首次建立基线也发送无新增通知", async () => {
   const env = {
     SNAPSHOTS: {
       get: async () => null,
-      put: async () => {
-        events.push("snapshot");
+      put: async (key: string) => {
+        events.push(key.startsWith("report:") ? "report" : "snapshot");
       },
     },
     FEISHU_WEBHOOK: "https://example.com/webhook",
@@ -175,7 +175,7 @@ test("首次建立基线也发送无新增通知", async () => {
 
   try {
     const result = await runMonitor(env);
-    assert.deepEqual(events, ["notify", "snapshot"]);
+    assert.deepEqual(events, ["notify", "report", "snapshot"]);
     assert.deepEqual(result.results, [{ site: "example", baselineCreated: true, totalUrls: 1 }]);
   } finally {
     globalThis.fetch = originalFetch;
